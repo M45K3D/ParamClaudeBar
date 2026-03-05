@@ -14,7 +14,6 @@ class UsageService: ObservableObject {
     var historyService: UsageHistoryService?
 
     private var timer: AnyCancellable?
-    private var pollingStarted = false
     private let usageEndpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     private let baseInterval: TimeInterval = 60
     private var currentInterval: TimeInterval = 60
@@ -48,8 +47,6 @@ class UsageService: ObservableObject {
     // MARK: - Polling
 
     func startPolling() {
-        guard !pollingStarted else { return }
-        pollingStarted = true
         guard isAuthenticated else { return }
         Task { await fetchUsage() }
         scheduleTimer()
@@ -155,11 +152,7 @@ class UsageService: ObservableObject {
             codeVerifier = nil
             oauthState = nil
 
-            if !pollingStarted {
-                startPolling()
-            } else {
-                await fetchUsage()
-            }
+            startPolling()
         } catch {
             lastError = "Token exchange error: \(error.localizedDescription)"
         }
