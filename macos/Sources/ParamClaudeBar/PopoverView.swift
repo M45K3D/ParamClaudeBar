@@ -9,7 +9,7 @@ struct PopoverView: View {
     @AppStorage("setupComplete") private var setupComplete = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 18) {
             if !setupComplete && !service.isAuthenticated {
                 SetupView(
                     service: service,
@@ -26,8 +26,8 @@ struct PopoverView: View {
                 }
             }
         }
-        .padding(12)
-        .frame(width: 300)
+        .padding(18)
+        .frame(width: 280)
         .background(.regularMaterial)
         .animation(.easeInOut(duration: 0.2), value: service.isAuthenticated)
     }
@@ -62,57 +62,50 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var authenticatedBody: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            WindowGauge(
-                label: "5h",
+        VStack(alignment: .leading, spacing: 18) {
+            WindowBlock(
+                label: "5-HOUR",
                 bucket: service.usage?.fiveHour,
                 tintForFraction: Theme.fiveHourTint(forFraction:)
             )
-            WindowGauge(
-                label: "7d",
+            WindowBlock(
+                label: "7-DAY",
                 bucket: service.usage?.sevenDay,
                 tintForFraction: Theme.sevenDayTint(forFraction:)
             )
         }
 
-        if let opus = service.usage?.sevenDayOpus,
-           opus.utilization != nil {
-            ModelChipsRow(
-                opus: opus,
-                sonnet: service.usage?.sevenDaySonnet
-            )
+        if let opus = service.usage?.sevenDayOpus, opus.utilization != nil {
+            InlineModelLine(opus: opus, sonnet: service.usage?.sevenDaySonnet)
         }
 
         if let extra = service.usage?.extraUsage, extra.isEnabled {
-            ExtraUsageRow(extra: extra)
+            InlineExtraUsageLine(extra: extra)
         }
 
         if service.usage?.fiveHour != nil {
-            Divider()
-            InsightsRow(
+            BurnRateSentence(
                 projection: BurnRateCalculator.project(
                     points: historyService.history.dataPoints,
                     valueExtractor: { $0.pct5h * 100 },
                     currentPercent: service.pct5h * 100,
                     resetTime: service.usage?.fiveHour?.resetsAtDate
-                ),
-                sparklinePoints: sparklineWindow(historyService.history.dataPoints)
+                )
             )
         }
 
-        Divider()
         UsageChartView(historyService: historyService)
 
         if let error = service.lastError {
             Label(error, systemImage: "exclamationmark.triangle")
                 .foregroundStyle(Theme.error)
-                .font(.caption)
+                .font(.caption2)
         }
 
         if let updaterError = appUpdater.lastError {
             Label(updaterError, systemImage: "arrow.triangle.2.circlepath.circle")
                 .foregroundStyle(Theme.error)
-                .font(.caption)
+                .font(.caption2)
         }
 
         PopoverFooter(service: service)
@@ -128,17 +121,18 @@ private struct PopoverHeader: View {
     private let tickerTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("ParamClaudeBar")
-                .font(.caption)
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text("PARAMCLAUDEBAR")
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(1.6)
                 .foregroundStyle(.secondary)
 
             Spacer()
 
             if let updated = service.lastUpdated {
-                Text("Updated \(relativeUpdatedString(from: updated, now: ticker))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(relativeUpdatedString(from: updated, now: ticker))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
                     .monospacedDigit()
             }
 
@@ -146,6 +140,7 @@ private struct PopoverHeader: View {
                 Task { await service.fetchUsage() }
             } label: {
                 Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 10, weight: .medium))
             }
             .buttonStyle(.borderless)
             .help("Refresh now")
@@ -172,29 +167,25 @@ private struct PopoverFooter: View {
     @ObservedObject var service: UsageService
 
     var body: some View {
-        HStack {
+        HStack(spacing: 14) {
             SettingsLink {
-                Text("Settings…")
+                Text("Settings")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
-            .font(.caption)
 
             Spacer()
 
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(service.isAuthenticated ? Color(nsColor: .systemGreen) : Color.secondary)
-                    .frame(width: 7, height: 7)
-                Text(service.isAuthenticated ? "Signed in" : "Not signed in")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
+            Circle()
+                .fill(service.isAuthenticated ? Color(nsColor: .systemGreen) : Color.secondary)
+                .frame(width: 5, height: 5)
 
             Spacer()
 
             Button("Quit") { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.borderless)
-                .font(.caption)
+                .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .keyboardShortcut("q", modifiers: .command)
         }
@@ -329,9 +320,9 @@ private struct CodeEntryView: View {
     }
 }
 
-// MARK: - Window gauge (the "magic" — big numerals + thin tinted bar)
+// MARK: - Window block (minimal — label, percentage, gauge line, dim metadata)
 
-private struct WindowGauge: View {
+private struct WindowBlock: View {
     let label: String
     let bucket: UsageBucket?
     let tintForFraction: (Double) -> Color
@@ -347,35 +338,39 @@ private struct WindowGauge: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(label.uppercased())
-                    .font(.caption2.weight(.semibold))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(label)
+                    .font(.system(size: 9, weight: .semibold))
+                    .tracking(1.6)
                     .foregroundStyle(.secondary)
-                    .tracking(1.0)
-                Text("\(pctInt)%")
-                    .font(.system(.callout, design: .rounded).weight(.semibold))
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                    .foregroundStyle(hasData ? .primary : .tertiary)
                 if fraction >= 0.85 {
                     PulsingDot(color: tintForFraction(fraction))
                 }
+            }
+
+            HStack(alignment: .firstTextBaseline) {
+                Text("\(pctInt)%")
+                    .font(.system(size: 26, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .foregroundStyle(hasData ? .primary : .tertiary)
+
                 Spacer()
+
                 if let resetDate = bucket?.resetsAtDate {
-                    Text(resetWallClock(for: resetDate, prefix: false))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                    Text("·")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Text(resetDate, style: .relative)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
+                    HStack(spacing: 4) {
+                        Text(resetWallClock(for: resetDate, prefix: true))
+                        Text("·")
+                            .foregroundStyle(.tertiary)
+                        Text(resetDate, style: .relative)
+                    }
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
                 }
             }
+
             GaugeBar(fraction: fraction, tint: tintForFraction(fraction))
         }
         .animation(.easeInOut(duration: 0.25), value: fraction)
@@ -423,61 +418,105 @@ private struct PulsingDot: View {
     }
 }
 
-// MARK: - Per-model chips
+// MARK: - Inline per-model line
 
-private struct ModelChipsRow: View {
+private struct InlineModelLine: View {
     let opus: UsageBucket
     let sonnet: UsageBucket?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Per-model · 7 day")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .tracking(0.6)
+        HStack(spacing: 14) {
+            modelChip(label: "Opus", bucket: opus)
+            if let sonnet {
+                modelChip(label: "Sonnet", bucket: sonnet)
+            }
+            Spacer()
+        }
+        .font(.system(size: 10))
+        .foregroundStyle(.secondary)
+        .monospacedDigit()
+    }
 
-            HStack(spacing: 8) {
-                ModelChip(label: "Opus", bucket: opus)
-                if let sonnet {
-                    ModelChip(label: "Sonnet", bucket: sonnet)
-                }
+    @ViewBuilder
+    private func modelChip(label: String, bucket: UsageBucket) -> some View {
+        if let pct = bucket.utilization {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Theme.sevenDayTint(forFraction: pct / 100))
+                    .frame(width: 5, height: 5)
+                Text(label)
+                Text("\(Int(round(pct)))%")
+                    .foregroundStyle(.primary)
             }
         }
     }
 }
 
-private struct ModelChip: View {
-    let label: String
-    let bucket: UsageBucket
-
-    private var fraction: Double {
-        max(0, min(1, (bucket.utilization ?? 0) / 100.0))
-    }
-    private var percentText: String {
-        guard let pct = bucket.utilization else { return "—" }
-        return "\(Int(round(pct)))%"
-    }
+private struct InlineExtraUsageLine: View {
+    let extra: ExtraUsage
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(label)
-                    .font(.caption.weight(.medium))
-                Spacer()
-                Text(percentText)
-                    .font(.caption.weight(.semibold))
-                    .monospacedDigit()
+        HStack(spacing: 4) {
+            Circle()
+                .fill(Theme.extraUsageAccent)
+                .frame(width: 5, height: 5)
+            Text("Extra")
+            if let used = extra.usedCreditsAmount, let limit = extra.monthlyLimitAmount {
+                Text("\(ExtraUsage.formatUSD(used)) / \(ExtraUsage.formatUSD(limit))")
+                    .foregroundStyle(.primary)
             }
-            ProgressView(value: fraction, total: 1)
-                .progressViewStyle(.linear)
-                .tint(Theme.sevenDayTint(forFraction: fraction))
-                .frame(height: 4)
+            if let pct = extra.utilization {
+                Text("·")
+                    .foregroundStyle(.tertiary)
+                Text("\(Int(round(pct)))%")
+            }
+            Spacer()
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
+        .font(.system(size: 10))
+        .foregroundStyle(.secondary)
+        .monospacedDigit()
+    }
+}
+
+// MARK: - Burn-rate sentence (replaces the three-card insights grid)
+
+private struct BurnRateSentence: View {
+    let projection: BurnRateProjection
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(verbatim: leading)
+                .foregroundStyle(.secondary)
+            if let trailing {
+                Text("·")
+                    .foregroundStyle(.tertiary)
+                Text(verbatim: trailing)
+                    .foregroundStyle(.primary)
+            }
+            Spacer()
+        }
+        .font(.system(size: 10))
+        .monospacedDigit()
+    }
+
+    private var leading: String {
+        if projection.burnRatePerHour > 0 {
+            return "Burning at \(formatRate(projection.burnRatePerHour))%/h"
+        } else if projection.burnRatePerHour < 0 {
+            return "Recovering"
+        } else {
+            return "Idle"
+        }
+    }
+
+    private var trailing: String? {
+        if let hit = projection.projectedHitTime {
+            let time = hit.formatted(.dateTime.hour().minute().locale(.init(identifier: "en_GB")))
+            return "hit \(time)"
+        } else if projection.burnRatePerHour > 0 {
+            return "on track"
+        }
+        return nil
     }
 }
 
@@ -511,177 +550,8 @@ private func resetWallClock(
     return prefix ? "Resets \(body)" : body
 }
 
-// MARK: - Extra usage row
-
-private struct ExtraUsageRow: View {
-    let extra: ExtraUsage
-
-    private var fraction: Double {
-        max(0, min(1, (extra.utilization ?? 0) / 100.0))
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Extra usage")
-                    .font(.body)
-                Spacer()
-                if let pct = extra.utilization {
-                    Text("\(Int(round(pct)))%")
-                        .font(.title2.weight(.semibold))
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                        .animation(.easeInOut(duration: 0.2), value: fraction)
-                }
-            }
-
-            if let used = extra.usedCreditsAmount, let limit = extra.monthlyLimitAmount {
-                Text("\(ExtraUsage.formatUSD(used)) / \(ExtraUsage.formatUSD(limit))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-
-            ProgressView(value: fraction, total: 1)
-                .progressViewStyle(.linear)
-                .tint(Theme.extraUsageAccent)
-                .frame(height: 8)
-        }
-    }
-}
-
-// MARK: - Insights row (§8.3)
-
-private let sparklineWindowMinutes: Double = 60
-
-private func sparklineWindow(_ points: [UsageDataPoint], now: Date = Date()) -> [UsageDataPoint] {
-    let cutoff = now.addingTimeInterval(-sparklineWindowMinutes * 60)
-    return points.filter { $0.timestamp >= cutoff && $0.timestamp <= now }
-}
-
-private struct InsightsRow: View {
-    let projection: BurnRateProjection
-    let sparklinePoints: [UsageDataPoint]
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            InsightCard(title: "Burn rate") {
-                burnRateView
-            }
-            InsightCard(title: "Projection") {
-                projectionView
-            }
-            InsightCard(title: "Pace") {
-                if sparklinePoints.count >= 2 {
-                    PaceSparkline(points: sparklinePoints)
-                } else {
-                    Text("—")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var burnRateView: some View {
-        if projection.burnRatePerHour > 0 {
-            Text("\(formatRate(projection.burnRatePerHour))%/h")
-                .font(.system(.caption, design: .rounded).weight(.semibold))
-                .monospacedDigit()
-        } else if projection.burnRatePerHour < 0 {
-            Text("Recovering")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-        } else {
-            Text("Idle")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    @ViewBuilder
-    private var projectionView: some View {
-        if let hit = projection.projectedHitTime {
-            Text("\(hit.formatted(.dateTime.hour().minute().locale(.init(identifier: "en_GB"))))")
-                .font(.system(.caption, design: .rounded).weight(.semibold))
-                .monospacedDigit()
-        } else if projection.burnRatePerHour > 0 {
-            Text("On track")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-        } else if projection.burnRatePerHour < 0 {
-            Text("Recovering")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-        } else {
-            Text("Idle")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
 private func formatRate(_ value: Double) -> String {
     String(format: "%.1f", value)
-}
-
-private struct InsightCard<Content: View>: View {
-    let title: String
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.system(size: 9, weight: .semibold))
-                .textCase(.uppercase)
-                .foregroundStyle(.secondary)
-                .tracking(0.6)
-            content()
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 6))
-    }
-}
-
-private struct PaceSparkline: View {
-    let points: [UsageDataPoint]
-
-    var body: some View {
-        Chart {
-            ForEach(points) { p in
-                LineMark(
-                    x: .value("t", p.timestamp),
-                    y: .value("pct", p.pct5h * 100)
-                )
-                .interpolationMethod(.catmullRom)
-                .foregroundStyle(Theme.fiveHourAccent)
-            }
-            ForEach(points) { p in
-                AreaMark(
-                    x: .value("t", p.timestamp),
-                    y: .value("pct", p.pct5h * 100)
-                )
-                .interpolationMethod(.catmullRom)
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Theme.fiveHourAccent.opacity(0.25), Theme.fiveHourAccent.opacity(0.0)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-            }
-        }
-        .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
-        .chartYScale(domain: 0...100)
-        .chartLegend(.hidden)
-        .frame(height: 24)
-    }
 }
 
 // MARK: - Setup helper (preserved)
