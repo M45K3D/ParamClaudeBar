@@ -63,14 +63,14 @@ struct UsageChartView: View {
                     x: .value("Time", iv.date),
                     y: .value("Usage", iv.pct5h * 100)
                 )
-                .foregroundStyle(.blue)
+                .foregroundStyle(Theme.fiveHourAccent)
                 .symbolSize(24)
 
                 PointMark(
                     x: .value("Time", iv.date),
                     y: .value("Usage", iv.pct7d * 100)
                 )
-                .foregroundStyle(.orange)
+                .foregroundStyle(Theme.sevenDayAccent)
                 .symbolSize(24)
             }
         }
@@ -95,8 +95,8 @@ struct UsageChartView: View {
             }
         }
         .chartForegroundStyleScale([
-            "5h": Color.blue,
-            "7d": Color.orange
+            "5h": Theme.fiveHourAccent,
+            "7d": Theme.sevenDayAccent
         ])
         .chartLegend(.visible)
         .chartPlotStyle { plot in
@@ -139,10 +139,10 @@ struct UsageChartView: View {
             HStack(spacing: 6) {
                 Label("\(Int(round(pct5h * 100)))%", systemImage: "circle.fill")
                     .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(Theme.fiveHourAccent)
                 Label("\(Int(round(pct7d * 100)))%", systemImage: "circle.fill")
                     .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.sevenDayAccent)
             }
         }
         .padding(.horizontal, 6)

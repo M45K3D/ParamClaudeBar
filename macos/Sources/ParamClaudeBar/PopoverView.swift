@@ -47,7 +47,7 @@ struct PopoverView: View {
 
         if let error = service.lastError {
             Label(error, systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.red)
+                .foregroundStyle(Theme.error)
                 .font(.caption)
         }
 
@@ -97,14 +97,14 @@ struct PopoverView: View {
         if let error = service.lastError {
             Divider()
             Label(error, systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.red)
+                .foregroundStyle(Theme.error)
                 .font(.caption)
         }
 
         if let updaterError = appUpdater.lastError {
             Divider()
             Label(updaterError, systemImage: "arrow.triangle.2.circlepath.circle")
-                .foregroundStyle(.red)
+                .foregroundStyle(Theme.error)
                 .font(.caption)
         }
 
@@ -215,7 +215,7 @@ private struct SetupView: View {
             if isDiscouragedPollingOption(service.pollingMinutes) {
                 Text("Frequent polling may cause rate limiting")
                     .font(.caption2)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.warning)
             }
         }
 
@@ -296,7 +296,7 @@ private struct UsageBucketRow: View {
                     .monospacedDigit()
             }
             ProgressView(value: (bucket?.utilization ?? 0) / 100.0, total: 1.0)
-                .tint(colorForPct((bucket?.utilization ?? 0) / 100.0))
+                .tint(Theme.progressTint(forFraction: (bucket?.utilization ?? 0) / 100.0))
             if let resetDate = bucket?.resetsAtDate {
                 Text("Resets \(resetDate, style: .relative)")
                     .font(.caption2)
@@ -331,7 +331,7 @@ private struct ExtraUsageRow: View {
                     }
                 }
                 ProgressView(value: (extra.utilization ?? 0) / 100.0, total: 1.0)
-                    .tint(.blue)
+                    .tint(Theme.extraUsageAccent)
             }
         }
     }
@@ -365,10 +365,3 @@ private struct SetupThresholdSlider: View {
     }
 }
 
-private func colorForPct(_ pct: Double) -> Color {
-    switch pct {
-    case ..<0.60: return .green
-    case 0.60..<0.80: return .yellow
-    default: return .red
-    }
-}
