@@ -79,12 +79,12 @@ struct PopoverView: View {
 
             VStack(spacing: 16) {
                 WindowRow(
-                    label: "Session (5 hour)",
+                    label: "5-hour limit",
                     bucket: service.usage?.fiveHour,
                     tintForFraction: Theme.fiveHourTint(forFraction:)
                 )
                 WindowRow(
-                    label: "Weekly (7 day)",
+                    label: "7-day limit",
                     bucket: service.usage?.sevenDay,
                     tintForFraction: Theme.sevenDayTint(forFraction:)
                 )
