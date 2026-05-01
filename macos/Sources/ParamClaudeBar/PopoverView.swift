@@ -8,7 +8,7 @@ struct PopoverView: View {
     @AppStorage("setupComplete") private var setupComplete = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 20) {
             if !setupComplete && !service.isAuthenticated {
                 SetupView(
                     service: service,
@@ -16,33 +16,36 @@ struct PopoverView: View {
                     onComplete: { setupComplete = true }
                 )
             } else {
-                Text("Claude Usage")
-                    .font(.headline)
+                PopoverHeader(service: service)
+
                 if !service.isAuthenticated {
-                    signInView
+                    signInBody
                 } else {
-                    usageView
+                    authenticatedBody
                 }
             }
         }
-        .padding()
-        .frame(width: 340)
+        .padding(16)
+        .frame(width: 380)
+        .background(.regularMaterial)
+        .animation(.easeInOut(duration: 0.2), value: service.isAuthenticated)
     }
 
+    // MARK: - Sign-in (post-onboarding sign-out fallback)
+
     @ViewBuilder
-    private var signInView: some View {
+    private var signInBody: some View {
         if service.isAwaitingCode {
             CodeEntryView(service: service)
         } else {
-            Text("Sign in to view your usage.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            Button("Sign in with Claude") {
-                service.startOAuthFlow()
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Sign in to view your usage.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Button("Sign in with Claude") { service.startOAuthFlow() }
+                    .buttonStyle(.borderedProminent)
+                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .frame(maxWidth: .infinity)
         }
 
         if let error = service.lastError {
@@ -51,107 +54,154 @@ struct PopoverView: View {
                 .font(.caption)
         }
 
-        Divider()
-        HStack {
-            settingsButton
-            Spacer()
-            Button("Quit") {
-                NSApplication.shared.terminate(nil)
-            }
-            .buttonStyle(.borderless)
-        }
+        PopoverFooter(service: service)
     }
 
+    // MARK: - Authenticated body
+
     @ViewBuilder
-    private var usageView: some View {
-        UsageBucketRow(
-            label: "5-Hour Window",
-            bucket: service.usage?.fiveHour
-        )
+    private var authenticatedBody: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            UsageBucketRow(
+                label: "5-hour window",
+                bucket: service.usage?.fiveHour,
+                tintForFraction: Theme.fiveHourTint(forFraction:)
+            )
 
-        UsageBucketRow(
-            label: "7-Day Window",
-            bucket: service.usage?.sevenDay
-        )
+            UsageBucketRow(
+                label: "7-day window",
+                bucket: service.usage?.sevenDay,
+                tintForFraction: Theme.sevenDayTint(forFraction:)
+            )
 
-        if let opus = service.usage?.sevenDayOpus,
-           opus.utilization != nil {
-            Divider()
-            Text("Per-Model (7 day)")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            UsageBucketRow(label: "Opus", bucket: opus)
-            if let sonnet = service.usage?.sevenDaySonnet {
-                UsageBucketRow(label: "Sonnet", bucket: sonnet)
+            if let opus = service.usage?.sevenDayOpus,
+               opus.utilization != nil {
+                Divider()
+                Text("Per-Model (7 day)")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                UsageBucketRow(
+                    label: "Opus",
+                    bucket: opus,
+                    tintForFraction: Theme.sevenDayTint(forFraction:)
+                )
+                if let sonnet = service.usage?.sevenDaySonnet {
+                    UsageBucketRow(
+                        label: "Sonnet",
+                        bucket: sonnet,
+                        tintForFraction: Theme.sevenDayTint(forFraction:)
+                    )
+                }
             }
-        }
 
-        if let extra = service.usage?.extraUsage, extra.isEnabled {
-            Divider()
-            ExtraUsageRow(extra: extra)
+            if let extra = service.usage?.extraUsage, extra.isEnabled {
+                Divider()
+                ExtraUsageRow(extra: extra)
+            }
         }
 
         Divider()
         UsageChartView(historyService: historyService)
 
         if let error = service.lastError {
-            Divider()
             Label(error, systemImage: "exclamationmark.triangle")
                 .foregroundStyle(Theme.error)
                 .font(.caption)
         }
 
         if let updaterError = appUpdater.lastError {
-            Divider()
             Label(updaterError, systemImage: "arrow.triangle.2.circlepath.circle")
                 .foregroundStyle(Theme.error)
                 .font(.caption)
         }
 
-        Divider()
+        PopoverFooter(service: service)
+    }
+}
 
-        HStack(spacing: 12) {
+// MARK: - Header (§8.1)
+
+private struct PopoverHeader: View {
+    @ObservedObject var service: UsageService
+    @State private var ticker = Date()
+
+    private let tickerTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("ParamClaudeBar")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
             if let updated = service.lastUpdated {
-                Text("Updated \(updated, style: .relative) ago")
+                Text("Updated \(relativeUpdatedString(from: updated, now: ticker))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
-            Spacer()
-        }
 
-        HStack(spacing: 12) {
-            settingsButton
-            Spacer()
-            Button("Refresh") {
+            Button {
                 Task { await service.fetchUsage() }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .help("Refresh now")
+            .keyboardShortcut("r", modifiers: .command)
+        }
+        .onReceive(tickerTimer) { ticker = $0 }
+    }
+}
+
+private func relativeUpdatedString(from updated: Date, now: Date) -> String {
+    let interval = max(0, now.timeIntervalSince(updated))
+    if interval < 60 {
+        return "\(Int(interval))s ago"
+    }
+    if interval < 3600 {
+        return "\(Int(interval / 60))m ago"
+    }
+    return "\(Int(interval / 3600))h ago"
+}
+
+// MARK: - Footer (§8.5)
+
+private struct PopoverFooter: View {
+    @ObservedObject var service: UsageService
+
+    var body: some View {
+        HStack {
+            SettingsLink {
+                Text("Settings…")
             }
             .buttonStyle(.borderless)
             .font(.caption)
-            if appUpdater.isConfigured {
-                Button("Check for Updates…") {
-                    appUpdater.checkForUpdates()
-                }
-                .buttonStyle(.borderless)
-                .font(.caption)
-                .disabled(!appUpdater.canCheckForUpdates)
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(service.isAuthenticated ? Color(nsColor: .systemGreen) : Color.secondary)
+                    .frame(width: 7, height: 7)
+                Text(service.isAuthenticated ? "Signed in" : "Not signed in")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
+
+            Spacer()
+
             Button("Quit") { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.borderless)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .keyboardShortcut("q", modifiers: .command)
         }
-    }
-
-    private var settingsButton: some View {
-        SettingsLink {
-            Text("Settings…")
-        }
-        .buttonStyle(.borderless)
-        .font(.caption)
     }
 }
 
-// MARK: - Setup (first launch)
+// MARK: - Setup (first launch — Phase 9 will redesign)
 
 private struct SetupView: View {
     @ObservedObject var service: UsageService
@@ -221,11 +271,9 @@ private struct SetupView: View {
 
         Divider()
 
-        Button("Get Started") {
-            onComplete()
-        }
-        .buttonStyle(.borderedProminent)
-        .frame(maxWidth: .infinity)
+        Button("Get Started") { onComplete() }
+            .buttonStyle(.borderedProminent)
+            .frame(maxWidth: .infinity)
 
         HStack {
             Spacer()
@@ -237,41 +285,41 @@ private struct SetupView: View {
     }
 }
 
-// MARK: - Subviews
+// MARK: - Code entry (paste-back UI)
 
 private struct CodeEntryView: View {
     @ObservedObject var service: UsageService
     @State private var code = ""
 
     var body: some View {
-        Text("Paste the code from your browser:")
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Paste the code from your browser:")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
 
-        HStack(spacing: 4) {
-            TextField("code#state", text: $code)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(.body, design: .monospaced))
-                .onSubmit { submit() }
-            Button {
-                if let str = NSPasteboard.general.string(forType: .string) {
-                    code = str.trimmingCharacters(in: .whitespacesAndNewlines)
+            HStack(spacing: 4) {
+                TextField("code#state", text: $code)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    .onSubmit { submit() }
+                Button {
+                    if let str = NSPasteboard.general.string(forType: .string) {
+                        code = str.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                } label: {
+                    Image(systemName: "doc.on.clipboard")
                 }
-            } label: {
-                Image(systemName: "doc.on.clipboard")
+                .buttonStyle(.borderless)
             }
-            .buttonStyle(.borderless)
-        }
 
-        HStack {
-            Button("Cancel") {
-                service.isAwaitingCode = false
+            HStack {
+                Button("Cancel") { service.isAwaitingCode = false }
+                    .buttonStyle(.borderless)
+                Spacer()
+                Button("Submit") { submit() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(code.isEmpty)
             }
-            .buttonStyle(.borderless)
-            Spacer()
-            Button("Submit") { submit() }
-                .buttonStyle(.borderedProminent)
-                .disabled(code.isEmpty)
         }
     }
 
@@ -281,61 +329,113 @@ private struct CodeEntryView: View {
     }
 }
 
+// MARK: - Usage row (§8.2)
+
 private struct UsageBucketRow: View {
     let label: String
     let bucket: UsageBucket?
+    let tintForFraction: (Double) -> Color
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(label)
-                    .font(.subheadline)
-                Spacer()
-                Text(percentageText)
-                    .font(.subheadline)
-                    .monospacedDigit()
-            }
-            ProgressView(value: (bucket?.utilization ?? 0) / 100.0, total: 1.0)
-                .tint(Theme.progressTint(forFraction: (bucket?.utilization ?? 0) / 100.0))
-            if let resetDate = bucket?.resetsAtDate {
-                Text("Resets \(resetDate, style: .relative)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
+    private var fraction: Double {
+        max(0, min(1, (bucket?.utilization ?? 0) / 100.0))
     }
 
     private var percentageText: String {
         guard let pct = bucket?.utilization else { return "—" }
         return "\(Int(round(pct)))%"
     }
-}
-
-private struct ExtraUsageRow: View {
-    let extra: ExtraUsage
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Extra Usage")
-                .font(.subheadline)
-            if let used = extra.usedCreditsAmount, let limit = extra.monthlyLimitAmount {
-                HStack {
-                    Text("\(ExtraUsage.formatUSD(used)) / \(ExtraUsage.formatUSD(limit))")
-                        .font(.caption)
-                        .monospacedDigit()
-                    Spacer()
-                    if let pct = extra.utilization {
-                        Text("\(Int(round(pct)))%")
-                            .font(.caption)
-                            .monospacedDigit()
-                    }
-                }
-                ProgressView(value: (extra.utilization ?? 0) / 100.0, total: 1.0)
-                    .tint(Theme.extraUsageAccent)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(label)
+                    .font(.body)
+                Spacer()
+                Text(percentageText)
+                    .font(.title2.weight(.semibold))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.2), value: fraction)
+            }
+
+            ProgressView(value: fraction, total: 1)
+                .progressViewStyle(.linear)
+                .tint(tintForFraction(fraction))
+                .frame(height: 8)
+
+            if let resetDate = bucket?.resetsAtDate {
+                Text(resetWallClock(for: resetDate))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(resetDate, style: .relative)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
         }
     }
 }
+
+private func resetWallClock(for date: Date, calendar: Calendar = .current, now: Date = Date()) -> String {
+    let locale = Locale(identifier: "en_GB")
+    var cal = calendar
+    cal.locale = locale
+
+    let resetDay = cal.startOfDay(for: date)
+    let today = cal.startOfDay(for: now)
+    let dayOffset = cal.dateComponents([.day], from: today, to: resetDay).day ?? 0
+
+    let timeFormat = Date.FormatStyle.dateTime.hour().minute().locale(locale)
+    let timeString = date.formatted(timeFormat)
+
+    switch dayOffset {
+    case 0: return "Resets at \(timeString)"
+    case 1: return "Resets tomorrow at \(timeString)"
+    default:
+        let weekday = date.formatted(.dateTime.weekday(.abbreviated).locale(locale))
+        return "Resets \(weekday) \(timeString)"
+    }
+}
+
+// MARK: - Extra usage row
+
+private struct ExtraUsageRow: View {
+    let extra: ExtraUsage
+
+    private var fraction: Double {
+        max(0, min(1, (extra.utilization ?? 0) / 100.0))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Extra usage")
+                    .font(.body)
+                Spacer()
+                if let pct = extra.utilization {
+                    Text("\(Int(round(pct)))%")
+                        .font(.title2.weight(.semibold))
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .animation(.easeInOut(duration: 0.2), value: fraction)
+                }
+            }
+
+            if let used = extra.usedCreditsAmount, let limit = extra.monthlyLimitAmount {
+                Text("\(ExtraUsage.formatUSD(used)) / \(ExtraUsage.formatUSD(limit))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+
+            ProgressView(value: fraction, total: 1)
+                .progressViewStyle(.linear)
+                .tint(Theme.extraUsageAccent)
+                .frame(height: 8)
+        }
+    }
+}
+
+// MARK: - Setup helper (preserved)
 
 private struct SetupThresholdSlider: View {
     let label: String
@@ -364,4 +464,3 @@ private struct SetupThresholdSlider: View {
         }
     }
 }
-
