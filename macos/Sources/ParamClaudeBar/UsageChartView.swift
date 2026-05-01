@@ -19,14 +19,20 @@ struct UsageChartView: View {
             let points = historyService.downsampledPoints(for: selectedRange)
 
             if points.isEmpty {
-                Text("No history data yet.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
+                emptyState
             } else {
                 chartView(points: points)
             }
         }
+    }
+
+    @ViewBuilder
+    private var emptyState: some View {
+        Text("Collecting usage history… check back in a few minutes")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: 140, alignment: .center)
+            .multilineTextAlignment(.center)
     }
 
     @ViewBuilder
@@ -36,6 +42,25 @@ struct UsageChartView: View {
         }
 
         Chart {
+            // 5-hour: filled accent area with a line on top
+            ForEach(points) { point in
+                AreaMark(
+                    x: .value("Time", point.timestamp),
+                    y: .value("Usage", point.pct5h * 100)
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            Theme.fiveHourAccent.opacity(0.30),
+                            Theme.fiveHourAccent.opacity(0.05)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .interpolationMethod(.catmullRom)
+            }
+
             ForEach(points) { point in
                 LineMark(
                     x: .value("Time", point.timestamp),
@@ -45,6 +70,7 @@ struct UsageChartView: View {
                 .interpolationMethod(.catmullRom)
             }
 
+            // 7-day: line only
             ForEach(points) { point in
                 LineMark(
                     x: .value("Time", point.timestamp),
@@ -64,41 +90,49 @@ struct UsageChartView: View {
                     y: .value("Usage", iv.pct5h * 100)
                 )
                 .foregroundStyle(Theme.fiveHourAccent)
-                .symbolSize(24)
+                .symbolSize(28)
 
                 PointMark(
                     x: .value("Time", iv.date),
                     y: .value("Usage", iv.pct7d * 100)
                 )
                 .foregroundStyle(Theme.sevenDayAccent)
-                .symbolSize(24)
+                .symbolSize(28)
             }
         }
         .chartXScale(domain: Date.now.addingTimeInterval(-selectedRange.interval)...Date.now)
         .chartYScale(domain: 0...100)
         .chartYAxis {
-            AxisMarks(values: [0, 25, 50, 75, 100]) { value in
+            AxisMarks(values: [25, 50, 75, 100]) { value in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [2, 3]))
+                    .foregroundStyle(.secondary.opacity(0.4))
                 AxisValueLabel {
                     if let v = value.as(Int.self) {
                         Text("\(v)%")
                             .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                 }
-                AxisGridLine()
             }
         }
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 3)) { value in
+            AxisMarks(values: .automatic(desiredCount: xAxisDesiredCount)) { _ in
                 AxisValueLabel(format: xAxisFormat)
                     .font(.caption2)
-                AxisGridLine()
+                    .foregroundStyle(.secondary)
             }
         }
         .chartForegroundStyleScale([
             "5h": Theme.fiveHourAccent,
             "7d": Theme.sevenDayAccent
         ])
-        .chartLegend(.visible)
+        .chartLegend(position: .bottom, spacing: 4) {
+            HStack(spacing: 12) {
+                LegendDot(color: Theme.fiveHourAccent, label: "5h")
+                LegendDot(color: Theme.sevenDayAccent, label: "7d")
+            }
+            .font(.caption2)
+        }
         .chartPlotStyle { plot in
             plot.clipped()
         }
@@ -126,7 +160,7 @@ struct UsageChartView: View {
                 tooltipView(date: iv.date, pct5h: iv.pct5h, pct7d: iv.pct7d)
             }
         }
-        .frame(height: 120)
+        .frame(height: 140)
         .padding(.top, 4)
     }
 
@@ -134,45 +168,68 @@ struct UsageChartView: View {
     private func tooltipView(date: Date, pct5h: Double, pct7d: Double) -> some View {
         VStack(spacing: 2) {
             Text(date, format: tooltipDateFormat)
-                .font(.system(size: 9))
+                .font(.caption2)
                 .foregroundStyle(.secondary)
-            HStack(spacing: 6) {
+                .monospacedDigit()
+            HStack(spacing: 8) {
                 Label("\(Int(round(pct5h * 100)))%", systemImage: "circle.fill")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(Theme.fiveHourAccent)
                 Label("\(Int(round(pct7d * 100)))%", systemImage: "circle.fill")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(Theme.sevenDayAccent)
             }
+            .monospacedDigit()
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 4))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
     }
 
     // MARK: - Formatting
 
     private var xAxisFormat: Date.FormatStyle {
         switch selectedRange {
-        case .hour1:
-            return .dateTime.hour().minute()
-        case .hour6, .day1:
-            return .dateTime.hour()
-        case .day7:
-            return .dateTime.weekday(.abbreviated)
-        case .day30:
-            return .dateTime.day().month(.abbreviated)
+        case .hour1, .hour6, .day1:
+            return .dateTime.hour().minute().locale(.init(identifier: "en_GB"))
+        case .day7, .day30:
+            return .dateTime.day().month(.abbreviated).locale(.init(identifier: "en_GB"))
+        }
+    }
+
+    private var xAxisDesiredCount: Int {
+        switch selectedRange {
+        case .hour1, .hour6: return 4
+        case .day1: return 5
+        case .day7: return 4
+        case .day30: return 5
         }
     }
 
     private var tooltipDateFormat: Date.FormatStyle {
+        let locale = Locale(identifier: "en_GB")
         switch selectedRange {
         case .hour1, .hour6, .day1:
-            return .dateTime.hour().minute()
+            return .dateTime.hour().minute().locale(locale)
         case .day7:
-            return .dateTime.weekday(.abbreviated).hour().minute()
+            return .dateTime.weekday(.abbreviated).hour().minute().locale(locale)
         case .day30:
-            return .dateTime.month(.abbreviated).day().hour()
+            return .dateTime.month(.abbreviated).day().hour().locale(locale)
+        }
+    }
+}
+
+private struct LegendDot: View {
+    let color: Color
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(color)
+                .frame(width: 7, height: 7)
+            Text(label)
+                .foregroundStyle(.secondary)
         }
     }
 }
