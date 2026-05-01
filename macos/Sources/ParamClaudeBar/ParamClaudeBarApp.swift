@@ -26,6 +26,13 @@ struct ParamClaudeBarApp: App {
                     service.historyService = historyService
                     service.notificationService = notificationService
                     service.startPolling()
+
+                    if !UserDefaults.standard.bool(forKey: "setupComplete") {
+                        OnboardingWindowController.show(
+                            service: service,
+                            notificationService: notificationService
+                        )
+                    }
                 }
         }
         .menuBarExtraStyle(.window)

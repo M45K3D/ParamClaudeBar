@@ -6,20 +6,10 @@ struct PopoverView: View {
     @ObservedObject var historyService: UsageHistoryService
     @ObservedObject var notificationService: NotificationService
     @ObservedObject var appUpdater: AppUpdater
-    @AppStorage("setupComplete") private var setupComplete = false
 
     var body: some View {
         Group {
-            if !setupComplete && !service.isAuthenticated {
-                VStack(alignment: .leading, spacing: 18) {
-                    SetupView(
-                        service: service,
-                        notificationService: notificationService,
-                        onComplete: { setupComplete = true }
-                    )
-                }
-                .padding(16)
-            } else if service.isAuthenticated {
+            if service.isAuthenticated {
                 authenticatedCard
             } else {
                 VStack(alignment: .leading, spacing: 14) {
@@ -218,61 +208,6 @@ private struct PopoverFooter: View {
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .keyboardShortcut("q", modifiers: .command)
-        }
-    }
-}
-
-// MARK: - Setup (first launch — Phase 9 will redesign)
-
-private struct SetupView: View {
-    @ObservedObject var service: UsageService
-    @ObservedObject var notificationService: NotificationService
-    var onComplete: () -> Void
-
-    var body: some View {
-        Text("Welcome")
-            .font(.headline)
-        Text("Configure your preferences to get started.")
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-
-        Divider()
-
-        LaunchAtLoginToggle(controlSize: .small, useSwitchStyle: true)
-
-        Divider()
-
-
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Polling Interval")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            Picker("", selection: Binding(
-                get: { service.pollingMinutes },
-                set: { service.updatePollingInterval($0) }
-            )) {
-                ForEach(UsageService.pollingOptions, id: \.self) { mins in
-                    Text(localizedPollingInterval(for: mins, locale: .autoupdatingCurrent))
-                        .tag(mins)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-        }
-
-        Divider()
-
-        Button("Get Started") { onComplete() }
-            .buttonStyle(.borderedProminent)
-            .frame(maxWidth: .infinity)
-
-        HStack {
-            Spacer()
-            Button("Quit") { NSApplication.shared.terminate(nil) }
-                .buttonStyle(.borderless)
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 }
@@ -628,32 +563,3 @@ private func formatRate(_ value: Double) -> String {
     String(format: "%.1f", value)
 }
 
-// MARK: - Setup helper (preserved)
-
-private struct SetupThresholdSlider: View {
-    let label: String
-    let value: Int
-    let onChange: (Int) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(label)
-                    .font(.callout)
-                Spacer()
-                Text(value > 0 ? "\(value)%" : "Off")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            Slider(
-                value: Binding(
-                    get: { Double(value) },
-                    set: { onChange(Int($0)) }
-                ),
-                in: 0...100,
-                step: 5
-            )
-            .controlSize(.small)
-        }
-    }
-}
