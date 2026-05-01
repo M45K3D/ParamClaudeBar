@@ -100,13 +100,12 @@ build_app_bundle() {
     echo "==> Bundling SwiftPM resources..."
     ditto "$resource_bundle" "$APP_BUNDLE/Contents/Resources/$(basename "$resource_bundle")"
 
-    echo "==> Compiling Asset Catalog..."
-    actool --compile "$APP_BUNDLE/Contents/Resources" \
-           --platform macosx \
-           --minimum-deployment-target 14.0 \
-           --app-icon AppIcon \
-           --output-partial-info-plist /dev/null \
-           "$PROJECT_DIR/Resources/Assets.xcassets" > /dev/null
+    echo "==> Installing app icon..."
+    if [[ ! -f "$PROJECT_DIR/Resources/AppIcon.icns" ]]; then
+        echo "Error: AppIcon.icns missing at $PROJECT_DIR/Resources/AppIcon.icns"
+        exit 1
+    fi
+    cp "$PROJECT_DIR/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 
     local sparkle_framework
     sparkle_framework="$(find "$BUILD_DIR" -path '*/Sparkle.framework' -type d | head -n 1 || true)"
