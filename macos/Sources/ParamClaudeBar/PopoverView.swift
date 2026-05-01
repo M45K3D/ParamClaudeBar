@@ -26,8 +26,8 @@ struct PopoverView: View {
                 }
             }
         }
-        .padding(18)
-        .frame(width: 280)
+        .padding(16)
+        .frame(width: 300)
         .background(.regularMaterial)
         .animation(.easeInOut(duration: 0.2), value: service.isAuthenticated)
     }
@@ -62,14 +62,14 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var authenticatedBody: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            WindowBlock(
-                label: "5-HOUR",
+        HStack(spacing: 10) {
+            WindowCard(
+                label: "5h",
                 bucket: service.usage?.fiveHour,
                 tintForFraction: Theme.fiveHourTint(forFraction:)
             )
-            WindowBlock(
-                label: "7-DAY",
+            WindowCard(
+                label: "7d",
                 bucket: service.usage?.sevenDay,
                 tintForFraction: Theme.sevenDayTint(forFraction:)
             )
@@ -94,7 +94,9 @@ struct PopoverView: View {
             )
         }
 
-        UsageChartView(historyService: historyService)
+        DisclosureView(label: "History") {
+            UsageChartView(historyService: historyService)
+        }
 
         if let error = service.lastError {
             Label(error, systemImage: "exclamationmark.triangle")
@@ -320,9 +322,9 @@ private struct CodeEntryView: View {
     }
 }
 
-// MARK: - Window block (minimal — label, percentage, gauge line, dim metadata)
+// MARK: - Window card (vertical, side-by-side)
 
-private struct WindowBlock: View {
+private struct WindowCard: View {
     let label: String
     let bucket: UsageBucket?
     let tintForFraction: (Double) -> Color
@@ -333,71 +335,105 @@ private struct WindowBlock: View {
     private var pctInt: Int {
         Int(round((bucket?.utilization ?? 0)))
     }
-    private var hasData: Bool {
-        bucket?.utilization != nil
-    }
+    private var hasData: Bool { bucket?.utilization != nil }
+    private var tint: Color { tintForFraction(fraction) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Text(label)
-                    .font(.system(size: 9, weight: .semibold))
-                    .tracking(1.6)
-                    .foregroundStyle(.secondary)
-                if fraction >= 0.85 {
-                    PulsingDot(color: tintForFraction(fraction))
+        VStack(alignment: .leading, spacing: 0) {
+            // Top accent stripe — the only "fill" indicator. Filled
+            // portion is tinted; the rest is faint, matching the
+            // window's danger band.
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(tint.opacity(0.15))
+                    Rectangle()
+                        .fill(tint)
+                        .frame(width: max(0, geo.size.width * fraction))
                 }
             }
+            .frame(height: 3)
 
-            HStack(alignment: .firstTextBaseline) {
-                Text("\(pctInt)%")
-                    .font(.system(size: 26, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                    .foregroundStyle(hasData ? .primary : .tertiary)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 4) {
+                    Text(label.uppercased())
+                        .font(.system(size: 9, weight: .semibold))
+                        .tracking(1.4)
+                        .foregroundStyle(.secondary)
+                    if fraction >= 0.85 {
+                        PulsingDot(color: tint)
+                    }
+                    Spacer()
+                }
 
-                Spacer()
+                HStack(alignment: .firstTextBaseline, spacing: 1) {
+                    Text("\(pctInt)")
+                        .font(.system(size: 32, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .foregroundStyle(hasData ? .primary : .tertiary)
+                    Text("%")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .padding(.bottom, 2)
+                }
+                .padding(.top, -2)
 
                 if let resetDate = bucket?.resetsAtDate {
-                    HStack(spacing: 4) {
+                    VStack(alignment: .leading, spacing: 1) {
                         Text(resetWallClock(for: resetDate, prefix: true))
-                        Text("·")
-                            .foregroundStyle(.tertiary)
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
                         Text(resetDate, style: .relative)
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                            .monospacedDigit()
                     }
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
                 }
             }
-
-            GaugeBar(fraction: fraction, tint: tintForFraction(fraction))
+            .padding(10)
         }
+        .frame(maxWidth: .infinity)
+        .background(tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(tint.opacity(0.15), lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
         .animation(.easeInOut(duration: 0.25), value: fraction)
     }
 }
 
-private struct GaugeBar: View {
-    let fraction: Double
-    let tint: Color
+// MARK: - Disclosure (tap to reveal the chart)
+
+private struct DisclosureView<Content: View>: View {
+    let label: String
+    @ViewBuilder var content: () -> Content
+    @State private var expanded = false
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color.secondary.opacity(0.15))
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [tint.opacity(0.85), tint],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(width: max(0, geo.size.width * fraction))
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 8, weight: .semibold))
+                    Text(label.uppercased())
+                        .font(.system(size: 9, weight: .semibold))
+                        .tracking(1.4)
+                    Spacer()
+                }
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                content()
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .frame(height: 4)
     }
 }
 
