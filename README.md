@@ -67,7 +67,7 @@ Click the icon anytime to see:
 
 ## Data storage
 
-All data is stored locally in `~/.config/claude-usage-bar/`:
+All data is stored locally in `~/Library/Application Support/ParamClaudeBar/`:
 
 | File | Purpose |
 |------|---------|
