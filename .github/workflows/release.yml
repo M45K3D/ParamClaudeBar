@@ -18,13 +18,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
       - name: Build release app bundle
         run: |
           version="${GITHUB_REF_NAME#v}"
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
           export APP_VERSION="$version"
+          export SU_FEED_URL="https://${owner}.github.io/${REPOSITORY_NAME}/appcast.xml"
           bash macos/scripts/build.sh
 
       - name: Package and verify release artifacts
+        env:
+          EXPECT_FEED_URL: '1'
         run: |
           bash macos/scripts/build.sh --skip-build --zip --dmg
           make verify-release
@@ -33,7 +40,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p dist
+          mkdir -p dist/archives dist/site
           gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
             --method POST \
             -f tag_name="${GITHUB_REF_NAME}" \
@@ -46,3 +53,41 @@ jobs:
             macos/ParamClaudeBar.zip
             macos/ParamClaudeBar.dmg
           body_path: dist/release-notes.md
+
+      - name: Generate Sparkle appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [[ -z "${SPARKLE_PRIVATE_KEY:-}" ]]; then
+            echo "::error::Missing SPARKLE_PRIVATE_KEY repository secret."
+            exit 1
+          fi
+
+          cp macos/ParamClaudeBar.zip dist/archives/ParamClaudeBar.zip
+
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | \
+            macos/.build/artifacts/sparkle/Sparkle/bin/generate_appcast \
+              dist/archives \
+              --ed-key-file - \
+              --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
+              --maximum-deltas 0 \
+              -o dist/site/appcast.xml
+
+      - name: Upload appcast for GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/site
+
+  deploy_appcast:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy appcast
+        id: deployment
+        uses: actions/deploy-pages@v4
