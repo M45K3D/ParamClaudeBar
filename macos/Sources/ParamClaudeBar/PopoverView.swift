@@ -127,7 +127,7 @@ struct PopoverView: View {
             Divider()
                 .opacity(0.4)
 
-            CardFooter(service: service)
+            CardFooter(service: service, appUpdater: appUpdater)
         }
     }
 }
@@ -325,6 +325,7 @@ private struct FatCapsuleBar: View {
 
 private struct CardFooter: View {
     @ObservedObject var service: UsageService
+    @ObservedObject var appUpdater: AppUpdater
     @State private var ticker = Date()
     private let tickerTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -351,13 +352,25 @@ private struct CardFooter: View {
                 .keyboardShortcut("r", modifiers: .command)
             }
 
-            HStack {
+            HStack(spacing: 14) {
                 SettingsLink {
                     Text("Settings")
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
+
+                if appUpdater.isConfigured {
+                    Button {
+                        appUpdater.checkForUpdates()
+                    } label: {
+                        Text("Check for updates")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!appUpdater.canCheckForUpdates)
+                }
 
                 Spacer()
 
