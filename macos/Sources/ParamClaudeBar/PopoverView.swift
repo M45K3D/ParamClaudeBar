@@ -9,27 +9,46 @@ struct PopoverView: View {
     @AppStorage("setupComplete") private var setupComplete = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        Group {
             if !setupComplete && !service.isAuthenticated {
-                SetupView(
-                    service: service,
-                    notificationService: notificationService,
-                    onComplete: { setupComplete = true }
-                )
-            } else {
-                PopoverHeader(service: service)
-
-                if !service.isAuthenticated {
-                    signInBody
-                } else {
-                    authenticatedBody
+                VStack(alignment: .leading, spacing: 18) {
+                    SetupView(
+                        service: service,
+                        notificationService: notificationService,
+                        onComplete: { setupComplete = true }
+                    )
                 }
+                .padding(16)
+            } else if service.isAuthenticated {
+                authenticatedCard
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    PopoverHeader(service: service)
+                    signInBody
+                }
+                .padding(16)
             }
         }
-        .padding(16)
-        .frame(width: 300)
+        .frame(width: 320)
         .background(.regularMaterial)
         .animation(.easeInOut(duration: 0.2), value: service.isAuthenticated)
+    }
+
+    @ViewBuilder
+    private var authenticatedCard: some View {
+        VStack(spacing: 0) {
+            authenticatedBody
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.5))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+        )
+        .padding(10)
     }
 
     // MARK: - Sign-in (post-onboarding sign-out fallback)
@@ -62,55 +81,64 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var authenticatedBody: some View {
-        HStack(spacing: 10) {
-            WindowCard(
-                label: "5h",
-                bucket: service.usage?.fiveHour,
-                tintForFraction: Theme.fiveHourTint(forFraction:)
-            )
-            WindowCard(
-                label: "7d",
-                bucket: service.usage?.sevenDay,
-                tintForFraction: Theme.sevenDayTint(forFraction:)
-            )
-        }
+        VStack(spacing: 18) {
+            Text("Claude Usage")
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity)
 
-        if let opus = service.usage?.sevenDayOpus, opus.utilization != nil {
-            InlineModelLine(opus: opus, sonnet: service.usage?.sevenDaySonnet)
-        }
-
-        if let extra = service.usage?.extraUsage, extra.isEnabled {
-            InlineExtraUsageLine(extra: extra)
-        }
-
-        if service.usage?.fiveHour != nil {
-            BurnRateSentence(
-                projection: BurnRateCalculator.project(
-                    points: historyService.history.dataPoints,
-                    valueExtractor: { $0.pct5h * 100 },
-                    currentPercent: service.pct5h * 100,
-                    resetTime: service.usage?.fiveHour?.resetsAtDate
+            VStack(spacing: 16) {
+                WindowRow(
+                    label: "Session (5 hour)",
+                    bucket: service.usage?.fiveHour,
+                    tintForFraction: Theme.fiveHourTint(forFraction:)
                 )
-            )
-        }
+                WindowRow(
+                    label: "Weekly (7 day)",
+                    bucket: service.usage?.sevenDay,
+                    tintForFraction: Theme.sevenDayTint(forFraction:)
+                )
 
-        DisclosureView(label: "History") {
-            UsageChartView(historyService: historyService)
-        }
+                if let opus = service.usage?.sevenDayOpus, opus.utilization != nil {
+                    InlineModelLine(opus: opus, sonnet: service.usage?.sevenDaySonnet)
+                        .padding(.top, 2)
+                }
+                if let extra = service.usage?.extraUsage, extra.isEnabled {
+                    InlineExtraUsageLine(extra: extra)
+                }
+                if service.usage?.fiveHour != nil {
+                    BurnRateSentence(
+                        projection: BurnRateCalculator.project(
+                            points: historyService.history.dataPoints,
+                            valueExtractor: { $0.pct5h * 100 },
+                            currentPercent: service.pct5h * 100,
+                            resetTime: service.usage?.fiveHour?.resetsAtDate
+                        )
+                    )
+                }
+            }
 
-        if let error = service.lastError {
-            Label(error, systemImage: "exclamationmark.triangle")
-                .foregroundStyle(Theme.error)
-                .font(.caption2)
-        }
+            DisclosureView(label: "History") {
+                UsageChartView(historyService: historyService)
+                    .padding(.top, 4)
+            }
 
-        if let updaterError = appUpdater.lastError {
-            Label(updaterError, systemImage: "arrow.triangle.2.circlepath.circle")
-                .foregroundStyle(Theme.error)
-                .font(.caption2)
-        }
+            if let error = service.lastError {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(Theme.error)
+                    .font(.caption2)
+            }
+            if let updaterError = appUpdater.lastError {
+                Label(updaterError, systemImage: "arrow.triangle.2.circlepath.circle")
+                    .foregroundStyle(Theme.error)
+                    .font(.caption2)
+            }
 
-        PopoverFooter(service: service)
+            Divider()
+                .opacity(0.4)
+
+            CardFooter(service: service)
+        }
     }
 }
 
@@ -322,9 +350,9 @@ private struct CodeEntryView: View {
     }
 }
 
-// MARK: - Window card (vertical, side-by-side)
+// MARK: - Window row (single card layout, fat capsule bar)
 
-private struct WindowCard: View {
+private struct WindowRow: View {
     let label: String
     let bucket: UsageBucket?
     let tintForFraction: (Double) -> Color
@@ -336,72 +364,111 @@ private struct WindowCard: View {
         Int(round((bucket?.utilization ?? 0)))
     }
     private var hasData: Bool { bucket?.utilization != nil }
-    private var tint: Color { tintForFraction(fraction) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Top accent stripe — the only "fill" indicator. Filled
-            // portion is tinted; the rest is faint, matching the
-            // window's danger band.
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Rectangle()
-                        .fill(tint.opacity(0.15))
-                    Rectangle()
-                        .fill(tint)
-                        .frame(width: max(0, geo.size.width * fraction))
-                }
-            }
-            .frame(height: 3)
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 4) {
-                    Text(label.uppercased())
-                        .font(.system(size: 9, weight: .semibold))
-                        .tracking(1.4)
-                        .foregroundStyle(.secondary)
-                    if fraction >= 0.85 {
-                        PulsingDot(color: tint)
-                    }
-                    Spacer()
-                }
-
-                HStack(alignment: .firstTextBaseline, spacing: 1) {
-                    Text("\(pctInt)")
-                        .font(.system(size: 32, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                        .foregroundStyle(hasData ? .primary : .tertiary)
-                    Text("%")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .padding(.bottom, 2)
-                }
-                .padding(.top, -2)
-
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(label)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.primary)
+                Spacer()
                 if let resetDate = bucket?.resetsAtDate {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(resetWallClock(for: resetDate, prefix: true))
-                            .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                        Text(resetDate, style: .relative)
-                            .font(.system(size: 9))
-                            .foregroundStyle(.tertiary)
-                            .monospacedDigit()
-                    }
+                    Text(resetWallClock(for: resetDate, prefix: true))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
                 }
             }
-            .padding(10)
+
+            FatCapsuleBar(fraction: fraction, tint: tintForFraction(fraction))
+
+            HStack(spacing: 6) {
+                if fraction >= 0.85 {
+                    PulsingDot(color: tintForFraction(fraction))
+                }
+                Text(hasData ? "\(pctInt)% used" : "—")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
         }
-        .frame(maxWidth: .infinity)
-        .background(tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(tint.opacity(0.15), lineWidth: 0.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
         .animation(.easeInOut(duration: 0.25), value: fraction)
+    }
+}
+
+private struct FatCapsuleBar: View {
+    let fraction: Double
+    let tint: Color
+    private let height: CGFloat = 8
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.primary.opacity(0.10))
+                Capsule()
+                    .fill(tint)
+                    .frame(width: max(height, geo.size.width * fraction))
+            }
+        }
+        .frame(height: height)
+    }
+}
+
+private struct CardFooter: View {
+    @ObservedObject var service: UsageService
+    @State private var ticker = Date()
+    private let tickerTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack {
+                if let updated = service.lastUpdated {
+                    Text("Last updated: \(updated.formatted(.dateTime.hour().minute().locale(.init(identifier: "en_GB"))))")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                } else {
+                    Text(" ")
+                        .font(.system(size: 11))
+                }
+                Spacer()
+                Button {
+                    Task { await service.fetchUsage() }
+                } label: {
+                    Text("Refresh")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("r", modifiers: .command)
+            }
+
+            HStack {
+                SettingsLink {
+                    Text("Settings")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                Circle()
+                    .fill(service.isAuthenticated ? Color(nsColor: .systemGreen) : Color.secondary)
+                    .frame(width: 5, height: 5)
+
+                Spacer()
+
+                Button("Quit") { NSApplication.shared.terminate(nil) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .keyboardShortcut("q", modifiers: .command)
+            }
+        }
+        .onReceive(tickerTimer) { ticker = $0 }
     }
 }
 
