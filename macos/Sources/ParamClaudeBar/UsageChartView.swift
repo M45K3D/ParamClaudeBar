@@ -7,7 +7,7 @@ struct UsageChartView: View {
     @State private var hoverDate: Date?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Picker("", selection: $selectedRange) {
                 ForEach(TimeRange.allCases) { range in
                     Text(range.rawValue).tag(range)
@@ -15,6 +15,7 @@ struct UsageChartView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .controlSize(.small)
 
             let points = historyService.downsampledPoints(for: selectedRange)
 
@@ -160,8 +161,8 @@ struct UsageChartView: View {
                 tooltipView(date: iv.date, pct5h: iv.pct5h, pct7d: iv.pct7d)
             }
         }
-        .frame(height: 140)
-        .padding(.top, 4)
+        .frame(height: 110)
+        .padding(.top, 2)
     }
 
     @ViewBuilder

@@ -9,7 +9,7 @@ struct PopoverView: View {
     @AppStorage("setupComplete") private var setupComplete = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             if !setupComplete && !service.isAuthenticated {
                 SetupView(
                     service: service,
@@ -26,8 +26,8 @@ struct PopoverView: View {
                 }
             }
         }
-        .padding(14)
-        .frame(width: 340)
+        .padding(12)
+        .frame(width: 300)
         .background(.regularMaterial)
         .animation(.easeInOut(duration: 0.2), value: service.isAuthenticated)
     }
@@ -62,14 +62,14 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var authenticatedBody: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 10) {
             WindowGauge(
-                label: "5-hour",
+                label: "5h",
                 bucket: service.usage?.fiveHour,
                 tintForFraction: Theme.fiveHourTint(forFraction:)
             )
             WindowGauge(
-                label: "7-day",
+                label: "7d",
                 bucket: service.usage?.sevenDay,
                 tintForFraction: Theme.sevenDayTint(forFraction:)
             )
@@ -347,45 +347,38 @@ private struct WindowGauge: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text("\(pctInt)")
-                    .font(.system(size: 48, weight: .semibold, design: .rounded))
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(label.uppercased())
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .tracking(1.0)
+                Text("\(pctInt)%")
+                    .font(.system(.callout, design: .rounded).weight(.semibold))
                     .monospacedDigit()
                     .contentTransition(.numericText())
                     .foregroundStyle(hasData ? .primary : .tertiary)
-                Text("%")
-                    .font(.system(size: 20, weight: .medium, design: .rounded))
-                    .foregroundStyle(.secondary)
-                Spacer()
                 if fraction >= 0.85 {
                     PulsingDot(color: tintForFraction(fraction))
-                        .padding(.trailing, 2)
                 }
-                Text(label.uppercased())
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .tracking(1.0)
+                Spacer()
+                if let resetDate = bucket?.resetsAtDate {
+                    Text(resetWallClock(for: resetDate, prefix: false))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    Text("·")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Text(resetDate, style: .relative)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
             }
             GaugeBar(fraction: fraction, tint: tintForFraction(fraction))
-            if let resetDate = bucket?.resetsAtDate {
-                metadataLine(resetDate)
-            }
         }
         .animation(.easeInOut(duration: 0.25), value: fraction)
-    }
-
-    @ViewBuilder
-    private func metadataLine(_ resetDate: Date) -> some View {
-        HStack(spacing: 6) {
-            Text("Resets \(resetWallClock(for: resetDate, prefix: false))")
-            Text("·")
-                .foregroundStyle(.tertiary)
-            Text(resetDate, style: .relative)
-        }
-        .font(.caption2)
-        .foregroundStyle(.secondary)
-        .monospacedDigit()
     }
 }
 
@@ -594,16 +587,16 @@ private struct InsightsRow: View {
     @ViewBuilder
     private var burnRateView: some View {
         if projection.burnRatePerHour > 0 {
-            Text("\(formatRate(projection.burnRatePerHour))% / hr")
-                .font(.callout.weight(.semibold))
+            Text("\(formatRate(projection.burnRatePerHour))%/h")
+                .font(.system(.caption, design: .rounded).weight(.semibold))
                 .monospacedDigit()
         } else if projection.burnRatePerHour < 0 {
             Text("Recovering")
-                .font(.callout.weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
         } else {
             Text("Idle")
-                .font(.callout.weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
     }
@@ -611,20 +604,20 @@ private struct InsightsRow: View {
     @ViewBuilder
     private var projectionView: some View {
         if let hit = projection.projectedHitTime {
-            Text("5h limit at \(hit.formatted(.dateTime.hour().minute().locale(.init(identifier: "en_GB"))))")
-                .font(.callout.weight(.semibold))
+            Text("\(hit.formatted(.dateTime.hour().minute().locale(.init(identifier: "en_GB"))))")
+                .font(.system(.caption, design: .rounded).weight(.semibold))
                 .monospacedDigit()
         } else if projection.burnRatePerHour > 0 {
             Text("On track")
-                .font(.callout.weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
         } else if projection.burnRatePerHour < 0 {
             Text("Recovering")
-                .font(.callout.weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
         } else {
             Text("Idle")
-                .font(.callout.weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
     }
@@ -639,18 +632,19 @@ private struct InsightCard<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(title)
-                .font(.caption2)
+                .font(.system(size: 9, weight: .semibold))
                 .textCase(.uppercase)
                 .foregroundStyle(.secondary)
-                .tracking(0.5)
+                .tracking(0.6)
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 6))
     }
 }
 
