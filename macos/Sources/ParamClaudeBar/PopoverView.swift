@@ -62,43 +62,23 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var authenticatedBody: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            UsageBucketRow(
-                label: "5-hour window",
-                bucket: service.usage?.fiveHour,
-                tintForFraction: Theme.fiveHourTint(forFraction:)
+        HeroSection(
+            fraction5h: max(0, min(1, service.pct5h)),
+            fraction7d: max(0, min(1, service.pct7d)),
+            fiveHour: service.usage?.fiveHour,
+            sevenDay: service.usage?.sevenDay
+        )
+
+        if let opus = service.usage?.sevenDayOpus,
+           opus.utilization != nil {
+            ModelChipsRow(
+                opus: opus,
+                sonnet: service.usage?.sevenDaySonnet
             )
+        }
 
-            UsageBucketRow(
-                label: "7-day window",
-                bucket: service.usage?.sevenDay,
-                tintForFraction: Theme.sevenDayTint(forFraction:)
-            )
-
-            if let opus = service.usage?.sevenDayOpus,
-               opus.utilization != nil {
-                Divider()
-                Text("Per-Model (7 day)")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-                UsageBucketRow(
-                    label: "Opus",
-                    bucket: opus,
-                    tintForFraction: Theme.sevenDayTint(forFraction:)
-                )
-                if let sonnet = service.usage?.sevenDaySonnet {
-                    UsageBucketRow(
-                        label: "Sonnet",
-                        bucket: sonnet,
-                        tintForFraction: Theme.sevenDayTint(forFraction:)
-                    )
-                }
-            }
-
-            if let extra = service.usage?.extraUsage, extra.isEnabled {
-                Divider()
-                ExtraUsageRow(extra: extra)
-            }
+        if let extra = service.usage?.extraUsage, extra.isEnabled {
+            ExtraUsageRow(extra: extra)
         }
 
         if service.usage?.fiveHour != nil {
@@ -343,16 +323,39 @@ private struct CodeEntryView: View {
     }
 }
 
-// MARK: - Usage row (§8.2)
+// MARK: - Hero section (§8.2 — redesigned)
 
-private struct UsageBucketRow: View {
+private struct HeroSection: View {
+    let fraction5h: Double
+    let fraction7d: Double
+    let fiveHour: UsageBucket?
+    let sevenDay: UsageBucket?
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            UsageHeroRing(fraction5h: fraction5h, fraction7d: fraction7d)
+
+            VStack(alignment: .leading, spacing: 14) {
+                WindowSummaryLine(
+                    label: "5-hour",
+                    bucket: fiveHour,
+                    accent: Theme.fiveHourTint(forFraction: fraction5h)
+                )
+                WindowSummaryLine(
+                    label: "7-day",
+                    bucket: sevenDay,
+                    accent: Theme.sevenDayTint(forFraction: fraction7d)
+                )
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private struct WindowSummaryLine: View {
     let label: String
     let bucket: UsageBucket?
-    let tintForFraction: (Double) -> Color
-
-    private var fraction: Double {
-        max(0, min(1, (bucket?.utilization ?? 0) / 100.0))
-    }
+    let accent: Color
 
     private var percentageText: String {
         guard let pct = bucket?.utilization else { return "—" }
@@ -360,32 +363,89 @@ private struct UsageBucketRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(accent)
+                    .frame(width: 8, height: 8)
                 Text(label)
-                    .font(.body)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .tracking(0.6)
                 Spacer()
                 Text(percentageText)
-                    .font(.title2.weight(.semibold))
+                    .font(.system(.callout, design: .rounded).weight(.semibold))
                     .monospacedDigit()
                     .contentTransition(.numericText())
-                    .animation(.easeInOut(duration: 0.2), value: fraction)
             }
-
-            ProgressView(value: fraction, total: 1)
-                .progressViewStyle(.linear)
-                .tint(tintForFraction(fraction))
-                .frame(height: 8)
-
             if let resetDate = bucket?.resetsAtDate {
                 Text(resetWallClock(for: resetDate))
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                 Text(resetDate, style: .relative)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
         }
+    }
+}
+
+// MARK: - Per-model chips
+
+private struct ModelChipsRow: View {
+    let opus: UsageBucket
+    let sonnet: UsageBucket?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Per-model · 7 day")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.6)
+
+            HStack(spacing: 8) {
+                ModelChip(label: "Opus", bucket: opus)
+                if let sonnet {
+                    ModelChip(label: "Sonnet", bucket: sonnet)
+                }
+            }
+        }
+    }
+}
+
+private struct ModelChip: View {
+    let label: String
+    let bucket: UsageBucket
+
+    private var fraction: Double {
+        max(0, min(1, (bucket.utilization ?? 0) / 100.0))
+    }
+    private var percentText: String {
+        guard let pct = bucket.utilization else { return "—" }
+        return "\(Int(round(pct)))%"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(label)
+                    .font(.caption.weight(.medium))
+                Spacer()
+                Text(percentText)
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+            }
+            ProgressView(value: fraction, total: 1)
+                .progressViewStyle(.linear)
+                .tint(Theme.sevenDayTint(forFraction: fraction))
+                .frame(height: 4)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
     }
 }
 
