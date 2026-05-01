@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 struct PopoverView: View {
     @ObservedObject var service: UsageService
@@ -98,6 +99,19 @@ struct PopoverView: View {
                 Divider()
                 ExtraUsageRow(extra: extra)
             }
+        }
+
+        if service.usage?.fiveHour != nil {
+            Divider()
+            InsightsRow(
+                projection: BurnRateCalculator.project(
+                    points: historyService.history.dataPoints,
+                    valueExtractor: { $0.pct5h * 100 },
+                    currentPercent: service.pct5h * 100,
+                    resetTime: service.usage?.fiveHour?.resetsAtDate
+                ),
+                sparklinePoints: sparklineWindow(historyService.history.dataPoints)
+            )
         }
 
         Divider()
@@ -432,6 +446,139 @@ private struct ExtraUsageRow: View {
                 .tint(Theme.extraUsageAccent)
                 .frame(height: 8)
         }
+    }
+}
+
+// MARK: - Insights row (§8.3)
+
+private let sparklineWindowMinutes: Double = 60
+
+private func sparklineWindow(_ points: [UsageDataPoint], now: Date = Date()) -> [UsageDataPoint] {
+    let cutoff = now.addingTimeInterval(-sparklineWindowMinutes * 60)
+    return points.filter { $0.timestamp >= cutoff && $0.timestamp <= now }
+}
+
+private struct InsightsRow: View {
+    let projection: BurnRateProjection
+    let sparklinePoints: [UsageDataPoint]
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            InsightCard(title: "Burn rate") {
+                burnRateView
+            }
+            InsightCard(title: "Projection") {
+                projectionView
+            }
+            InsightCard(title: "Pace") {
+                if sparklinePoints.count >= 2 {
+                    PaceSparkline(points: sparklinePoints)
+                } else {
+                    Text("—")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var burnRateView: some View {
+        if projection.burnRatePerHour > 0 {
+            Text("\(formatRate(projection.burnRatePerHour))% / hr")
+                .font(.callout.weight(.semibold))
+                .monospacedDigit()
+        } else if projection.burnRatePerHour < 0 {
+            Text("Recovering")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.secondary)
+        } else {
+            Text("Idle")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var projectionView: some View {
+        if let hit = projection.projectedHitTime {
+            Text("5h limit at \(hit.formatted(.dateTime.hour().minute().locale(.init(identifier: "en_GB"))))")
+                .font(.callout.weight(.semibold))
+                .monospacedDigit()
+        } else if projection.burnRatePerHour > 0 {
+            Text("On track")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.secondary)
+        } else if projection.burnRatePerHour < 0 {
+            Text("Recovering")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.secondary)
+        } else {
+            Text("Idle")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private func formatRate(_ value: Double) -> String {
+    String(format: "%.1f", value)
+}
+
+private struct InsightCard<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption2)
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+                .tracking(0.5)
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
+        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct PaceSparkline: View {
+    let points: [UsageDataPoint]
+
+    var body: some View {
+        Chart {
+            ForEach(points) { p in
+                LineMark(
+                    x: .value("t", p.timestamp),
+                    y: .value("pct", p.pct5h * 100)
+                )
+                .interpolationMethod(.catmullRom)
+                .foregroundStyle(Theme.fiveHourAccent)
+            }
+            ForEach(points) { p in
+                AreaMark(
+                    x: .value("t", p.timestamp),
+                    y: .value("pct", p.pct5h * 100)
+                )
+                .interpolationMethod(.catmullRom)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Theme.fiveHourAccent.opacity(0.25), Theme.fiveHourAccent.opacity(0.0)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartYScale(domain: 0...100)
+        .chartLegend(.hidden)
+        .frame(height: 24)
     }
 }
 
