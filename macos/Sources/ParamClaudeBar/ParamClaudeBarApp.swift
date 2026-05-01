@@ -62,8 +62,7 @@ private struct MenuBarLabel: View {
 
     private var percentageText: String {
         guard service.isAuthenticated else { return "—" }
-        let highest = max(service.pct5h, service.pct7d) * 100
-        return "\(Int(round(highest)))%"
+        return "\(Int(round(service.pct5h * 100)))%"
     }
 
     var body: some View {
