@@ -283,6 +283,8 @@ private struct WindowRow: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
             }
 
@@ -560,12 +562,9 @@ private func resetWallClock(
     let timeString = date.formatted(timeFormat)
 
     let body: String
-    switch dayOffset {
-    case 0:
-        body = prefix ? "at \(timeString)" : "at \(timeString)"
-    case 1:
-        body = prefix ? "tomorrow at \(timeString)" : "tomorrow at \(timeString)"
-    default:
+    if dayOffset == 0 {
+        body = "at \(timeString)"
+    } else {
         let weekday = date.formatted(.dateTime.weekday(.abbreviated).locale(locale))
         body = "\(weekday) \(timeString)"
     }
