@@ -30,7 +30,7 @@ class UsageService: ObservableObject {
 
     private var refreshTask: Task<RefreshResult, Never>?
 
-    static let defaultPollingMinutes = 1
+    static let defaultPollingMinutes = 2
     static let pollingOptions = [1, 2, 5, 15]
     nonisolated static let maxBackoffInterval: TimeInterval = 60 * 60
     nonisolated static let defaultOAuthScopes = ["user:profile", "user:inference"]
@@ -108,6 +108,17 @@ class UsageService: ObservableObject {
         self.redirectUri = redirectUri
         self.credentialsStore = credentialsStore
         self.localProfileLoader = localProfileLoader
+        // One-time migration: anyone on the v1.0.x default of 1-minute
+        // polling gets bumped to 2 minutes to avoid Anthropic's OAuth
+        // usage rate limit. Honoured once; if the user manually picks 1m
+        // afterwards they keep that.
+        let migrationKey = "polling.migration.bumped1mTo2m"
+        if !UserDefaults.standard.bool(forKey: migrationKey),
+           UserDefaults.standard.integer(forKey: "pollingMinutes") == 1 {
+            UserDefaults.standard.set(2, forKey: "pollingMinutes")
+        }
+        UserDefaults.standard.set(true, forKey: migrationKey)
+
         let stored = UserDefaults.standard.integer(forKey: "pollingMinutes")
         let minutes = Self.pollingOptions.contains(stored) ? stored : Self.defaultPollingMinutes
         self.pollingMinutes = minutes
