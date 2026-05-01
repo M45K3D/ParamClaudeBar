@@ -34,8 +34,8 @@ A tiny macOS menu bar app that shows your Claude API usage at a glance. Click it
 
 ### Download
 
-1. Download `ClaudeUsageBar.dmg` from the [latest release](https://github.com/Blimp-Labs/claude-usage-bar/releases/latest)
-2. Open the disk image and drag `ClaudeUsageBar.app` into `Applications`
+1. Download `ParamClaudeBar.dmg` from the [latest release](https://github.com/Blimp-Labs/claude-usage-bar/releases/latest)
+2. Open the disk image and drag `ParamClaudeBar.app` into `Applications`
 3. Launch the app from `/Applications`
 4. macOS may require right-click → **Open** on first launch
 
@@ -94,7 +94,7 @@ make clean          # remove build artifacts
 This repo now uses a tag-driven release flow. Pushing a `v*` tag will:
 
 - build the `.app` bundle once
-- produce `ClaudeUsageBar.zip` for Sparkle and `ClaudeUsageBar.dmg` for manual installs
+- produce `ParamClaudeBar.zip` for Sparkle and `ParamClaudeBar.dmg` for manual installs
 - verify the packaged artifacts contain the expected app bundle resources and updater framework
 - create the GitHub Release
 - reuse GitHub-generated release notes for both the GitHub Release and the Sparkle update entry
@@ -134,8 +134,8 @@ https://blimp-labs.github.io/claude-usage-bar/appcast.xml
 
 ```
 macos/                           # macOS menu bar app (Swift/SwiftUI)
-├── Sources/ClaudeUsageBar/
-│   ├── ClaudeUsageBarApp.swift      # App entry point, menu bar setup
+├── Sources/ParamClaudeBar/
+│   ├── ParamClaudeBarApp.swift      # App entry point, menu bar setup
 │   ├── UsageService.swift           # OAuth, polling, API calls
 │   ├── UsageModel.swift             # API response types
 │   ├── UsageHistoryModel.swift      # History data types, time ranges
@@ -150,7 +150,7 @@ macos/                           # macOS menu bar app (Swift/SwiftUI)
 │   └── Resources/
 │       ├── claude-logo.png          # Pre-rendered menu bar logo (512px)
 │       └── en.lproj/Localizable.strings
-├── Tests/ClaudeUsageBarTests/
+├── Tests/ParamClaudeBarTests/
 ├── Resources/                       # App bundle resources (not SwiftPM)
 │   ├── Info.plist
 │   ├── Assets.xcassets/             # App icon

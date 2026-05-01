@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct ClaudeUsageBarApp: App {
+struct ParamClaudeBarApp: App {
     @StateObject private var service = UsageService()
     @StateObject private var historyService = UsageHistoryService()
     @StateObject private var notificationService = NotificationService()

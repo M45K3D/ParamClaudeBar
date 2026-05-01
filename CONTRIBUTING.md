@@ -21,8 +21,8 @@ This builds the release binary via Swift Package Manager, bundles it as a `.app`
 ## Project structure
 
 ```
-Sources/ClaudeUsageBar/
-├── ClaudeUsageBarApp.swift      # App entry point, menu bar setup
+Sources/ParamClaudeBar/
+├── ParamClaudeBarApp.swift      # App entry point, menu bar setup
 ├── UsageService.swift           # OAuth, polling, API calls
 ├── UsageModel.swift             # API response types
 ├── UsageHistoryModel.swift      # History data types, time ranges
