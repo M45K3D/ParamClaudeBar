@@ -1,7 +1,8 @@
 import Foundation
 
 func isDiscouragedPollingOption(_ minutes: Int) -> Bool {
-    minutes == 5 || minutes == 15
+    // No longer flagged: a 1-minute default is the new recommended cadence.
+    false
 }
 
 func pollingOptionLabel(
@@ -9,21 +10,8 @@ func pollingOptionLabel(
     locale: Locale = .autoupdatingCurrent,
     resourceBundle: Bundle? = paramClaudeBarResourceBundle()
 ) -> String {
-    let interval = localizedPollingInterval(for: minutes, locale: locale)
-    guard isDiscouragedPollingOption(minutes) else {
-        return interval
-    }
-
-    let fallbackFormat = "%@ (not recommended)"
-    let format = resourceBundle.map {
-        NSLocalizedString(
-            "polling.option.not_recommended",
-            bundle: $0,
-            value: fallbackFormat,
-            comment: "Polling interval option label for refresh intervals that are discouraged"
-        )
-    } ?? fallbackFormat
-    return String(format: format, locale: locale, interval)
+    _ = resourceBundle
+    return localizedPollingInterval(for: minutes, locale: locale)
 }
 
 func localizedPollingInterval(for minutes: Int, locale: Locale) -> String {

@@ -282,12 +282,6 @@ private struct SetupView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-
-            if isDiscouragedPollingOption(service.pollingMinutes) {
-                Text("Frequent polling may cause rate limiting")
-                    .font(.caption2)
-                    .foregroundStyle(Theme.warning)
-            }
         }
 
         Divider()
