@@ -1,123 +1,107 @@
 import AppKit
 
-private let labelWidth: CGFloat = 14
-private let barWidth: CGFloat = 24
-private let barHeight: CGFloat = 5
-private let rowGap: CGFloat = 3
-private let labelGap: CGFloat = 2
-private let cornerRadius: CGFloat = 2
-private let logoSize: CGFloat = 12
-private let logoGap: CGFloat = 2
-private let barsWidth: CGFloat = labelWidth + labelGap + barWidth + 2
-private let iconWidth: CGFloat = logoSize + logoGap + barsWidth
-private let iconHeight: CGFloat = 18
-private let fontSize: CGFloat = 8
+// 22×22pt menu-bar icon with two concentric ring gauges, per SPEC §7.2 / §7.3.
+// The outer ring tracks the 7-day window; the inner ring tracks the 5-hour
+// window. Each ring is drawn over a 10% label-colour background ring, then
+// the coloured arc sweeps clockwise from 12 o'clock proportional to its
+// fraction. The icon is rendered as a non-template image so the system
+// colours come through unchanged.
 
-private struct CachedLabel {
-    let string: NSAttributedString
-    let size: NSSize
-}
+private let iconSize: CGFloat = 22
+private let outerStroke: CGFloat = 3
+private let innerStroke: CGFloat = 2
+private let innerInsetFromOuterEdge: CGFloat = 4
 
-private let cachedLabels: [String: CachedLabel] = {
-    let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .medium)
-    let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
-    var result = [String: CachedLabel]()
-    for label in ["5h", "7d"] {
-        let str = NSAttributedString(string: label, attributes: attrs)
-        result[label] = CachedLabel(string: str, size: str.size())
-    }
-    return result
-}()
-
-private func drawRow(label: String, barX: CGFloat, barY: CGFloat, labelX: CGFloat, drawBarFill: (CGFloat, CGFloat) -> Void) {
-    if let cached = cachedLabels[label] {
-        let labelY = barY + (barHeight - cached.size.height) / 2
-        cached.string.draw(at: NSPoint(x: labelX + labelWidth - cached.size.width, y: labelY))
-    }
-    drawBarFill(barX, barY)
-}
+private let outerRadius: CGFloat = (iconSize - outerStroke) / 2
+private let innerBoundsInset = innerInsetFromOuterEdge
+private let innerRadius: CGFloat =
+    (iconSize - 2 * innerBoundsInset - innerStroke) / 2
+private let iconCenter = NSPoint(x: iconSize / 2, y: iconSize / 2)
 
 func renderIcon(pct5h: Double, pct7d: Double) -> NSImage {
-    let image = NSImage(size: NSSize(width: iconWidth, height: iconHeight), flipped: true) { _ in
-        let offset = logoSize + logoGap
-        let barX = offset + labelWidth + labelGap
-        let topY = (iconHeight - barHeight * 2 - rowGap) / 2
-        let bottomY = topY + barHeight + rowGap
-
-        drawClaudeLogo(x: 0, y: (iconHeight - logoSize) / 2, size: logoSize)
-
-        drawRow(label: "5h", barX: barX, barY: topY, labelX: offset) { x, y in
-            drawBar(x: x, y: y, width: barWidth, height: barHeight, cornerRadius: cornerRadius, pct: pct5h)
-        }
-        drawRow(label: "7d", barX: barX, barY: bottomY, labelX: offset) { x, y in
-            drawBar(x: x, y: y, width: barWidth, height: barHeight, cornerRadius: cornerRadius, pct: pct7d)
-        }
-        return true
-    }
-    image.isTemplate = true
-    return image
+    makeIcon(frac5h: clampFraction(pct5h / 100), frac7d: clampFraction(pct7d / 100))
 }
 
 func renderUnauthenticatedIcon() -> NSImage {
-    let image = NSImage(size: NSSize(width: iconWidth, height: iconHeight), flipped: true) { _ in
-        let offset = logoSize + logoGap
-        let barX = offset + labelWidth + labelGap
-        let topY = (iconHeight - barHeight * 2 - rowGap) / 2
-        let bottomY = topY + barHeight + rowGap
+    makeIcon(frac5h: 0, frac7d: 0)
+}
 
-        drawClaudeLogo(x: 0, y: (iconHeight - logoSize) / 2, size: logoSize)
+// MARK: - Drawing
 
-        drawRow(label: "5h", barX: barX, barY: topY, labelX: offset) { x, y in
-            drawDashedBar(x: x, y: y, width: barWidth, height: barHeight, cornerRadius: cornerRadius)
-        }
-        drawRow(label: "7d", barX: barX, barY: bottomY, labelX: offset) { x, y in
-            drawDashedBar(x: x, y: y, width: barWidth, height: barHeight, cornerRadius: cornerRadius)
-        }
+private func makeIcon(frac5h: Double, frac7d: Double) -> NSImage {
+    let size = NSSize(width: iconSize, height: iconSize)
+    let image = NSImage(size: size, flipped: false) { _ in
+        drawRing(
+            radius: outerRadius,
+            fraction: frac7d,
+            stroke: outerStroke,
+            arcColor: sevenDayRingColor(fraction: frac7d)
+        )
+        drawRing(
+            radius: innerRadius,
+            fraction: frac5h,
+            stroke: innerStroke,
+            arcColor: fiveHourRingColor(fraction: frac5h)
+        )
         return true
     }
-    image.isTemplate = true
+    image.isTemplate = false
     return image
 }
 
-// MARK: - Bar drawing
+private func drawRing(
+    radius: CGFloat,
+    fraction: Double,
+    stroke: CGFloat,
+    arcColor: NSColor
+) {
+    let background = NSBezierPath()
+    background.appendArc(
+        withCenter: iconCenter,
+        radius: radius,
+        startAngle: 0,
+        endAngle: 360,
+        clockwise: false
+    )
+    background.lineWidth = stroke
+    NSColor.labelColor.withAlphaComponent(0.1).setStroke()
+    background.stroke()
 
-private func drawBar(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, cornerRadius: CGFloat, pct: Double) {
-    let bgRect = NSRect(x: x, y: y, width: width, height: height)
-    let bgPath = NSBezierPath(roundedRect: bgRect, xRadius: cornerRadius, yRadius: cornerRadius)
-    NSColor.black.withAlphaComponent(0.25).setFill()
-    bgPath.fill()
+    guard fraction > 0 else { return }
 
-    let clampedPct = max(0, min(1, pct))
-    if clampedPct > 0 {
-        let fillWidth = width * clampedPct
-        let fillRect = NSRect(x: x, y: y, width: fillWidth, height: height)
-        let fillPath = NSBezierPath(roundedRect: fillRect, xRadius: cornerRadius, yRadius: cornerRadius)
-        NSColor.black.setFill()
-        fillPath.fill()
+    let sweepDegrees = fraction * 360
+    let arc = NSBezierPath()
+    arc.appendArc(
+        withCenter: iconCenter,
+        radius: radius,
+        startAngle: 90,
+        endAngle: 90 - sweepDegrees,
+        clockwise: true
+    )
+    arc.lineWidth = stroke
+    arc.lineCapStyle = .round
+    arcColor.setStroke()
+    arc.stroke()
+}
+
+// MARK: - Colour thresholds (SPEC §7.3)
+
+private func fiveHourRingColor(fraction: Double) -> NSColor {
+    switch fraction {
+    case ..<0.60: return .systemGreen
+    case 0.60..<0.85: return .systemOrange
+    default: return .systemRed
     }
 }
 
-private func drawDashedBar(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, cornerRadius: CGFloat) {
-    let rect = NSRect(x: x, y: y, width: width, height: height)
-    let path = NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius)
-    NSColor.black.withAlphaComponent(0.25).setStroke()
-    path.lineWidth = 1
-    let dashPattern: [CGFloat] = [2, 2]
-    path.setLineDash(dashPattern, count: 2, phase: 0)
-    path.stroke()
+private func sevenDayRingColor(fraction: Double) -> NSColor {
+    switch fraction {
+    case ..<0.60: return .systemBlue
+    case 0.60..<0.85: return .systemPurple
+    default: return .systemPink
+    }
 }
 
-// MARK: - Claude logo (pre-rendered 512px template PNG)
-
-private let claudeLogoImage: NSImage? = {
-    if let bundle = paramClaudeBarResourceBundle(),
-       let png = bundle.url(forResource: "claude-logo", withExtension: "png") {
-        return NSImage(contentsOf: png)
-    }
-    return nil
-}()
-
-private func drawClaudeLogo(x: CGFloat, y: CGFloat, size: CGFloat) {
-    guard let logo = claudeLogoImage else { return }
-    logo.draw(in: NSRect(x: x, y: y, width: size, height: size))
+private func clampFraction(_ value: Double) -> Double {
+    max(0, min(1, value))
 }
