@@ -9,7 +9,7 @@ struct PopoverView: View {
     @AppStorage("setupComplete") private var setupComplete = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 14) {
             if !setupComplete && !service.isAuthenticated {
                 SetupView(
                     service: service,
@@ -26,8 +26,8 @@ struct PopoverView: View {
                 }
             }
         }
-        .padding(16)
-        .frame(width: 380)
+        .padding(14)
+        .frame(width: 340)
         .background(.regularMaterial)
         .animation(.easeInOut(duration: 0.2), value: service.isAuthenticated)
     }
@@ -62,12 +62,18 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var authenticatedBody: some View {
-        HeroSection(
-            fraction5h: max(0, min(1, service.pct5h)),
-            fraction7d: max(0, min(1, service.pct7d)),
-            fiveHour: service.usage?.fiveHour,
-            sevenDay: service.usage?.sevenDay
-        )
+        VStack(alignment: .leading, spacing: 18) {
+            WindowGauge(
+                label: "5-hour",
+                bucket: service.usage?.fiveHour,
+                tintForFraction: Theme.fiveHourTint(forFraction:)
+            )
+            WindowGauge(
+                label: "7-day",
+                bucket: service.usage?.sevenDay,
+                tintForFraction: Theme.sevenDayTint(forFraction:)
+            )
+        }
 
         if let opus = service.usage?.sevenDayOpus,
            opus.utilization != nil {
@@ -323,71 +329,104 @@ private struct CodeEntryView: View {
     }
 }
 
-// MARK: - Hero section (§8.2 — redesigned)
+// MARK: - Window gauge (the "magic" — big numerals + thin tinted bar)
 
-private struct HeroSection: View {
-    let fraction5h: Double
-    let fraction7d: Double
-    let fiveHour: UsageBucket?
-    let sevenDay: UsageBucket?
+private struct WindowGauge: View {
+    let label: String
+    let bucket: UsageBucket?
+    let tintForFraction: (Double) -> Color
+
+    private var fraction: Double {
+        max(0, min(1, (bucket?.utilization ?? 0) / 100.0))
+    }
+    private var pctInt: Int {
+        Int(round((bucket?.utilization ?? 0)))
+    }
+    private var hasData: Bool {
+        bucket?.utilization != nil
+    }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
-            UsageHeroRing(fraction5h: fraction5h, fraction7d: fraction7d)
-
-            VStack(alignment: .leading, spacing: 14) {
-                WindowSummaryLine(
-                    label: "5-hour",
-                    bucket: fiveHour,
-                    accent: Theme.fiveHourTint(forFraction: fraction5h)
-                )
-                WindowSummaryLine(
-                    label: "7-day",
-                    bucket: sevenDay,
-                    accent: Theme.sevenDayTint(forFraction: fraction7d)
-                )
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text("\(pctInt)")
+                    .font(.system(size: 48, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .foregroundStyle(hasData ? .primary : .tertiary)
+                Text("%")
+                    .font(.system(size: 20, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if fraction >= 0.85 {
+                    PulsingDot(color: tintForFraction(fraction))
+                        .padding(.trailing, 2)
+                }
+                Text(label.uppercased())
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .tracking(1.0)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            GaugeBar(fraction: fraction, tint: tintForFraction(fraction))
+            if let resetDate = bucket?.resetsAtDate {
+                metadataLine(resetDate)
+            }
         }
+        .animation(.easeInOut(duration: 0.25), value: fraction)
+    }
+
+    @ViewBuilder
+    private func metadataLine(_ resetDate: Date) -> some View {
+        HStack(spacing: 6) {
+            Text("Resets \(resetWallClock(for: resetDate, prefix: false))")
+            Text("·")
+                .foregroundStyle(.tertiary)
+            Text(resetDate, style: .relative)
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .monospacedDigit()
     }
 }
 
-private struct WindowSummaryLine: View {
-    let label: String
-    let bucket: UsageBucket?
-    let accent: Color
-
-    private var percentageText: String {
-        guard let pct = bucket?.utilization else { return "—" }
-        return "\(Int(round(pct)))%"
-    }
+private struct GaugeBar: View {
+    let fraction: Double
+    let tint: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(accent)
-                    .frame(width: 8, height: 8)
-                Text(label)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .tracking(0.6)
-                Spacer()
-                Text(percentageText)
-                    .font(.system(.callout, design: .rounded).weight(.semibold))
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-            }
-            if let resetDate = bucket?.resetsAtDate {
-                Text(resetWallClock(for: resetDate))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text(resetDate, style: .relative)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.15))
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [tint.opacity(0.85), tint],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(0, geo.size.width * fraction))
             }
         }
+        .frame(height: 4)
+    }
+}
+
+private struct PulsingDot: View {
+    let color: Color
+    @State private var scale: CGFloat = 1.0
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 6, height: 6)
+            .scaleEffect(scale)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                    scale = 1.5
+                }
+            }
     }
 }
 
@@ -449,7 +488,12 @@ private struct ModelChip: View {
     }
 }
 
-private func resetWallClock(for date: Date, calendar: Calendar = .current, now: Date = Date()) -> String {
+private func resetWallClock(
+    for date: Date,
+    calendar: Calendar = .current,
+    now: Date = Date(),
+    prefix: Bool = true
+) -> String {
     let locale = Locale(identifier: "en_GB")
     var cal = calendar
     cal.locale = locale
@@ -461,13 +505,17 @@ private func resetWallClock(for date: Date, calendar: Calendar = .current, now: 
     let timeFormat = Date.FormatStyle.dateTime.hour().minute().locale(locale)
     let timeString = date.formatted(timeFormat)
 
+    let body: String
     switch dayOffset {
-    case 0: return "Resets at \(timeString)"
-    case 1: return "Resets tomorrow at \(timeString)"
+    case 0:
+        body = prefix ? "at \(timeString)" : "at \(timeString)"
+    case 1:
+        body = prefix ? "tomorrow at \(timeString)" : "tomorrow at \(timeString)"
     default:
         let weekday = date.formatted(.dateTime.weekday(.abbreviated).locale(locale))
-        return "Resets \(weekday) \(timeString)"
+        body = "\(weekday) \(timeString)"
     }
+    return prefix ? "Resets \(body)" : body
 }
 
 // MARK: - Extra usage row
