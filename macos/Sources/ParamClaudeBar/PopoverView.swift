@@ -114,9 +114,13 @@ struct PopoverView: View {
             }
 
             if let error = service.lastError {
-                Label(error, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(Theme.error)
-                    .font(.caption2)
+                let isSlowdown = error.lowercased().contains("slowing down")
+                Label(
+                    error,
+                    systemImage: isSlowdown ? "clock.arrow.circlepath" : "exclamationmark.triangle"
+                )
+                .foregroundStyle(isSlowdown ? Theme.warning : Theme.error)
+                .font(.caption2)
             }
             if let updaterError = appUpdater.lastError {
                 Label(updaterError, systemImage: "arrow.triangle.2.circlepath.circle")

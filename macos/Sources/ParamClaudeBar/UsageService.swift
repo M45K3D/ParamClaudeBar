@@ -61,6 +61,23 @@ class UsageService: ObservableObject {
         min(max(retryAfter ?? currentInterval, currentInterval * 2), maxBackoffInterval)
     }
 
+    nonisolated static func rateLimitMessage(forSeconds seconds: TimeInterval) -> String {
+        let totalSeconds = max(0, Int(seconds.rounded()))
+        let pretty: String
+        if totalSeconds >= 60 {
+            let minutes = totalSeconds / 60
+            let leftover = totalSeconds % 60
+            if leftover == 0 || minutes >= 5 {
+                pretty = "\(minutes) min"
+            } else {
+                pretty = "\(minutes) min \(leftover)s"
+            }
+        } else {
+            pretty = "\(totalSeconds)s"
+        }
+        return "Slowing down for \(pretty) — Anthropic asked us to ease off"
+    }
+
     // OAuth constants
     private let clientId = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
     private let redirectUri: String
@@ -270,7 +287,7 @@ class UsageService: ObservableObject {
                     retryAfter: retryAfter,
                     currentInterval: currentInterval
                 )
-                lastError = "Rate limited — backing off to \(Int(currentInterval))s"
+                lastError = Self.rateLimitMessage(forSeconds: currentInterval)
                 scheduleTimer()
                 return
             }
