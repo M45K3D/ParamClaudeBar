@@ -11,14 +11,20 @@ final class OnboardingWindowController {
 
     static func show(
         service: UsageService,
-        notificationService: NotificationService
+        notificationService: NotificationService,
+        settings: SettingsStore
     ) {
-        shared.present(service: service, notificationService: notificationService)
+        shared.present(
+            service: service,
+            notificationService: notificationService,
+            settings: settings
+        )
     }
 
     private func present(
         service: UsageService,
-        notificationService: NotificationService
+        notificationService: NotificationService,
+        settings: SettingsStore
     ) {
         if let window {
             window.makeKeyAndOrderFront(nil)
@@ -34,6 +40,7 @@ final class OnboardingWindowController {
                 self?.dismiss()
             }
         )
+        .preferredColorScheme(settings.appearanceTheme.preferredColorScheme)
 
         let host = NSHostingController(rootView: view)
         let window = NSWindow(contentViewController: host)

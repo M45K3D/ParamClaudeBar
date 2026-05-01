@@ -18,34 +18,41 @@ private let innerRadius: CGFloat =
     (iconSize - 2 * innerBoundsInset - innerStroke) / 2
 private let iconCenter = NSPoint(x: iconSize / 2, y: iconSize / 2)
 
-func renderIcon(pct5h: Double, pct7d: Double) -> NSImage {
-    makeIcon(frac5h: clampFraction(pct5h), frac7d: clampFraction(pct7d))
+func renderIcon(pct5h: Double, pct7d: Double, monochrome: Bool = false) -> NSImage {
+    makeIcon(
+        frac5h: clampFraction(pct5h),
+        frac7d: clampFraction(pct7d),
+        monochrome: monochrome
+    )
 }
 
-func renderUnauthenticatedIcon() -> NSImage {
-    makeIcon(frac5h: 0, frac7d: 0)
+func renderUnauthenticatedIcon(monochrome: Bool = false) -> NSImage {
+    makeIcon(frac5h: 0, frac7d: 0, monochrome: monochrome)
 }
 
 // MARK: - Drawing
 
-private func makeIcon(frac5h: Double, frac7d: Double) -> NSImage {
+private func makeIcon(frac5h: Double, frac7d: Double, monochrome: Bool) -> NSImage {
     let size = NSSize(width: iconSize, height: iconSize)
     let image = NSImage(size: size, flipped: false) { _ in
         drawRing(
             radius: outerRadius,
             fraction: frac7d,
             stroke: outerStroke,
-            arcColor: sevenDayRingColor(fraction: frac7d)
+            arcColor: monochrome ? .labelColor : sevenDayRingColor(fraction: frac7d)
         )
         drawRing(
             radius: innerRadius,
             fraction: frac5h,
             stroke: innerStroke,
-            arcColor: fiveHourRingColor(fraction: frac5h)
+            arcColor: monochrome ? .labelColor : fiveHourRingColor(fraction: frac5h)
         )
         return true
     }
-    image.isTemplate = false
+    // Monochrome variant uses .labelColor exclusively, so flagging it as a
+    // template image lets macOS handle the inverse-on-selection state and
+    // tinting the user's accent colour where appropriate.
+    image.isTemplate = monochrome
     return image
 }
 

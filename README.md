@@ -6,10 +6,6 @@
 
 A native macOS menu bar app for keeping an eye on your Claude usage at a glance — and getting a quiet nudge before you hit a limit.
 
-<p align="center">
-  <img src="macos/Resources/demo.png" width="400" alt="ParamClaudeBar popover">
-</p>
-
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue)
 ![Swift 5.9+](https://img.shields.io/badge/Swift-5.9%2B-orange)
 ![License](https://img.shields.io/badge/license-BSD--2--Clause-green)
