@@ -284,7 +284,21 @@ class UsageService: ObservableObject {
             lastError = nil
             lastUpdated = Date()
             historyService?.recordDataPoint(pct5h: pct5h, pct7d: pct7d)
-            notificationService?.checkAndNotify(pct5h: pct5h, pct7d: pct7d, pctExtra: pctExtra)
+            let burn5h: BurnRateProjection? = historyService.map { hs in
+                BurnRateCalculator.project(
+                    points: hs.history.dataPoints,
+                    valueExtractor: { $0.pct5h * 100 },
+                    currentPercent: pct5h * 100,
+                    resetTime: usage?.fiveHour?.resetsAtDate
+                )
+            }
+            notificationService?.evaluate(
+                pct5h: pct5h * 100,
+                pct7d: pct7d * 100,
+                reset5h: usage?.fiveHour?.resetsAtDate,
+                reset7d: usage?.sevenDay?.resetsAtDate,
+                burnRate5h: burn5h
+            )
             if currentInterval != baseInterval {
                 currentInterval = baseInterval
                 scheduleTimer()

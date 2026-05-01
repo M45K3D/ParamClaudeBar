@@ -1,50 +1,13 @@
 import Foundation
 @preconcurrency import UserNotifications
 
-struct ThresholdAlert: Equatable {
-    let window: String
-    let pct: Int
-}
+private let resetIsoFormatter: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime]
+    return f
+}()
 
-/// Pure logic: returns which threshold alerts should fire given a state transition.
-func crossedThresholds(
-    threshold5h: Int,
-    threshold7d: Int,
-    thresholdExtra: Int,
-    previous5h: Double,
-    previous7d: Double,
-    previousExtra: Double,
-    current5h: Double,
-    current7d: Double,
-    currentExtra: Double
-) -> [ThresholdAlert] {
-    var alerts = [ThresholdAlert]()
-
-    if threshold5h > 0 {
-        let t = Double(threshold5h)
-        if current5h >= t && previous5h < t {
-            alerts.append(ThresholdAlert(window: "5-hour", pct: Int(round(current5h))))
-        }
-    }
-
-    if threshold7d > 0 {
-        let t = Double(threshold7d)
-        if current7d >= t && previous7d < t {
-            alerts.append(ThresholdAlert(window: "7-day", pct: Int(round(current7d))))
-        }
-    }
-
-    if thresholdExtra > 0 {
-        let t = Double(thresholdExtra)
-        if currentExtra >= t && previousExtra < t {
-            alerts.append(ThresholdAlert(window: "Extra usage", pct: Int(round(currentExtra))))
-        }
-    }
-
-    return alerts
-}
-
-private class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+private final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
@@ -54,117 +17,251 @@ private class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     }
 }
 
+/// User-configurable notification preferences and the runtime that decides
+/// when to actually fire a notification, with debouncing per SPEC §10.
 @MainActor
 class NotificationService: ObservableObject {
-    /// 0 = off, 5–100 = alert when window reaches this %.
-    @Published private(set) var threshold5h: Int
-    @Published private(set) var threshold7d: Int
-    @Published private(set) var thresholdExtra: Int
+    @Published var warningEnabled: Bool {
+        didSet { defaults.set(warningEnabled, forKey: K.warningEnabled) }
+    }
+    @Published var criticalEnabled: Bool {
+        didSet { defaults.set(criticalEnabled, forKey: K.criticalEnabled) }
+    }
+    @Published var burnRateEnabled: Bool {
+        didSet { defaults.set(burnRateEnabled, forKey: K.burnRateEnabled) }
+    }
+    @Published var resetEnabled: Bool {
+        didSet { defaults.set(resetEnabled, forKey: K.resetEnabled) }
+    }
+    @Published var warningPercent: Int {
+        didSet { defaults.set(warningPercent, forKey: K.warningPercent) }
+    }
+    @Published var criticalPercent: Int {
+        didSet { defaults.set(criticalPercent, forKey: K.criticalPercent) }
+    }
 
-    private var previousPct5h: Double?
-    private var previousPct7d: Double?
-    private var previousPctExtra: Double?
+    private let defaults: UserDefaults
     private let delegate = NotificationDelegate()
 
-    init() {
-        threshold5h = Self.load("notificationThreshold5h")
-        threshold7d = Self.load("notificationThreshold7d")
-        thresholdExtra = Self.load("notificationThresholdExtra")
-        if Bundle.main.bundleIdentifier != nil {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        self.warningEnabled = (defaults.object(forKey: K.warningEnabled) as? Bool) ?? true
+        self.criticalEnabled = (defaults.object(forKey: K.criticalEnabled) as? Bool) ?? true
+        self.burnRateEnabled = (defaults.object(forKey: K.burnRateEnabled) as? Bool) ?? true
+        self.resetEnabled = defaults.bool(forKey: K.resetEnabled)
+        self.warningPercent = (defaults.object(forKey: K.warningPercent) as? Int) ?? 75
+        self.criticalPercent = (defaults.object(forKey: K.criticalPercent) as? Int) ?? 90
+        if Self.isRunningAsApp {
             UNUserNotificationCenter.current().delegate = delegate
         }
     }
 
-    func setThreshold5h(_ value: Int) {
-        threshold5h = clamp(value)
-        UserDefaults.standard.set(threshold5h, forKey: "notificationThreshold5h")
-        previousPct5h = nil
-        if threshold5h > 0 { requestPermission() }
+    nonisolated private static var isRunningAsApp: Bool {
+        Bundle.main.bundleURL.pathExtension == "app"
     }
 
-    func setThreshold7d(_ value: Int) {
-        threshold7d = clamp(value)
-        UserDefaults.standard.set(threshold7d, forKey: "notificationThreshold7d")
-        previousPct7d = nil
-        if threshold7d > 0 { requestPermission() }
+    // MARK: - Permissions
+
+    func requestPermissionIfNeeded() {
+        guard Self.isRunningAsApp else { return }
+        UNUserNotificationCenter.current()
+            .requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    func setThresholdExtra(_ value: Int) {
-        thresholdExtra = clamp(value)
-        UserDefaults.standard.set(thresholdExtra, forKey: "notificationThresholdExtra")
-        previousPctExtra = nil
-        if thresholdExtra > 0 { requestPermission() }
-    }
+    // MARK: - Public API used by UsageService
 
-    func requestPermission() {
-        guard Bundle.main.bundleIdentifier != nil else { return }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
-    }
+    /// Single entry point invoked after every successful poll. Decides
+    /// which notifications (if any) should fire, applying the §10.2
+    /// per-window debouncing rules.
+    func evaluate(
+        pct5h: Double,
+        pct7d: Double,
+        reset5h: Date?,
+        reset7d: Date?,
+        burnRate5h: BurnRateProjection?
+    ) {
+        detectResetAndClearState(window: "5h", currentReset: reset5h)
+        detectResetAndClearState(window: "7d", currentReset: reset7d)
 
-    func checkAndNotify(pct5h: Double, pct7d: Double, pctExtra: Double) {
-        let current5h = pct5h * 100
-        let current7d = pct7d * 100
-        let currentExtra = pctExtra * 100
-
-        let prev5h = previousPct5h ?? 0
-        let prev7d = previousPct7d ?? 0
-        let prevExtra = previousPctExtra ?? 0
-
-        defer {
-            previousPct5h = current5h
-            previousPct7d = current7d
-            previousPctExtra = currentExtra
+        if warningEnabled {
+            crossThreshold(
+                window: "5h", pct: pct5h, reset: reset5h,
+                threshold: warningPercent, kind: "warning", title: "Approaching limit"
+            )
+            crossThreshold(
+                window: "7d", pct: pct7d, reset: reset7d,
+                threshold: warningPercent, kind: "warning", title: "Approaching limit"
+            )
         }
 
-        let alerts = crossedThresholds(
-            threshold5h: threshold5h,
-            threshold7d: threshold7d,
-            thresholdExtra: thresholdExtra,
-            previous5h: prev5h,
-            previous7d: prev7d,
-            previousExtra: prevExtra,
-            current5h: current5h,
-            current7d: current7d,
-            currentExtra: currentExtra
-        )
-
-        for alert in alerts {
-            sendNotification(window: alert.window, pct: alert.pct)
-        }
-    }
-
-    private func sendNotification(window: String, pct: Int) {
-        guard Bundle.main.bundleIdentifier != nil else {
-            print("[Notification] \(window) usage has reached \(pct)% (no bundle – skipped)")
-            return
+        if criticalEnabled {
+            crossThreshold(
+                window: "5h", pct: pct5h, reset: reset5h,
+                threshold: criticalPercent, kind: "critical", title: "Limit nearly reached"
+            )
+            crossThreshold(
+                window: "7d", pct: pct7d, reset: reset7d,
+                threshold: criticalPercent, kind: "critical", title: "Limit nearly reached"
+            )
         }
 
-        let content = UNMutableNotificationContent()
-        content.title = "Claude Usage"
-        content.body = "\(window) usage has reached \(pct)%"
-        content.sound = .default
-
-        let request = UNNotificationRequest(
-            identifier: "usage-\(window)",
-            content: content,
-            trigger: nil
-        )
-
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("[Notification] Failed to deliver: \(error)")
-            } else {
-                print("[Notification] Delivered: \(window) at \(pct)%")
+        if burnRateEnabled, let burnRate5h, let projected = burnRate5h.projectedHitTime {
+            let lastKey = K.lastFire("burnRate", "5h")
+            if defaults.string(forKey: lastKey) == nil {
+                let secondsUntilHit = projected.timeIntervalSinceNow
+                if secondsUntilHit > 0 && secondsUntilHit <= 30 * 60 {
+                    let minutes = Int(round(secondsUntilHit / 60))
+                    sendNotification(
+                        identifier: "burn-rate-5h",
+                        title: "Limit imminent",
+                        body: "At current pace you'll hit the 5-hour limit in ~\(minutes) minutes."
+                    )
+                    defaults.set(resetIsoFormatter.string(from: Date()), forKey: lastKey)
+                }
             }
         }
     }
 
-    private func clamp(_ value: Int) -> Int {
-        max(0, min(100, value))
+    func sendTestNotification() {
+        requestPermissionIfNeeded()
+        sendNotification(
+            identifier: "test",
+            title: "ParamClaudeBar",
+            body: "Test notification — your alerts are wired up."
+        )
     }
 
-    private static func load(_ key: String) -> Int {
-        let value = UserDefaults.standard.integer(forKey: key)
-        return max(0, min(100, value))
+    // MARK: - Internals
+
+    private func detectResetAndClearState(window: String, currentReset: Date?) {
+        guard let currentReset else { return }
+        let knownKey = K.knownReset(window)
+        let lastKnown = defaults.string(forKey: knownKey).flatMap(resetIsoFormatter.date(from:))
+
+        defer {
+            defaults.set(resetIsoFormatter.string(from: currentReset), forKey: knownKey)
+        }
+
+        guard let lastKnown else { return }
+        guard currentReset > lastKnown else { return }
+
+        if resetEnabled {
+            let windowName = window == "5h" ? "5-hour" : "7-day"
+            sendNotification(
+                identifier: "reset-\(window)",
+                title: "Quota reset",
+                body: "Your \(windowName) window has reset."
+            )
+        }
+
+        defaults.removeObject(forKey: K.lastFire("warning", window))
+        defaults.removeObject(forKey: K.lastFire("critical", window))
+        if window == "5h" {
+            defaults.removeObject(forKey: K.lastFire("burnRate", "5h"))
+        }
     }
+
+    private func crossThreshold(
+        window: String,
+        pct: Double,
+        reset: Date?,
+        threshold: Int,
+        kind: String,
+        title: String
+    ) {
+        guard threshold > 0, pct >= Double(threshold) else { return }
+
+        let lastKey = K.lastFire(kind, window)
+        guard defaults.string(forKey: lastKey) == nil else { return }
+
+        let resetText = reset.map(formatResetClock) ?? "soon"
+        let windowName = window == "5h" ? "5-hour" : "7-day"
+        sendNotification(
+            identifier: "\(kind)-\(window)",
+            title: title,
+            body: "\(windowName) usage at \(Int(round(pct)))%. Resets at \(resetText)."
+        )
+        defaults.set(resetIsoFormatter.string(from: Date()), forKey: lastKey)
+    }
+
+    private func sendNotification(identifier: String, title: String, body: String) {
+        guard Self.isRunningAsApp else {
+            print("[Notification] \(title): \(body) (skipped — not running inside app bundle)")
+            return
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("[Notification] Failed to deliver: \(error)")
+            }
+        }
+    }
+
+    private enum K {
+        static let warningEnabled = "notify.warningEnabled"
+        static let criticalEnabled = "notify.criticalEnabled"
+        static let burnRateEnabled = "notify.burnRateEnabled"
+        static let resetEnabled = "notify.resetEnabled"
+        static let warningPercent = "notify.warningPercent"
+        static let criticalPercent = "notify.criticalPercent"
+
+        static func lastFire(_ kind: String, _ window: String) -> String {
+            "notify.last.\(kind).\(window)"
+        }
+        static func knownReset(_ window: String) -> String {
+            "notify.knownReset.\(window)"
+        }
+    }
+}
+
+private func formatResetClock(_ date: Date) -> String {
+    date.formatted(.dateTime.hour().minute().locale(.init(identifier: "en_GB")))
+}
+
+// MARK: - Pure helpers (kept for tests of the threshold logic)
+
+struct ThresholdCross: Equatable {
+    let window: String
+    let kind: String
+    let pct: Int
+}
+
+/// Pure decision function: returns the alerts that *would* fire for the
+/// given inputs, ignoring any persisted debounce state. Used by tests.
+func threshholdCrosses(
+    warningEnabled: Bool,
+    criticalEnabled: Bool,
+    warningPercent: Int,
+    criticalPercent: Int,
+    pct5h: Double,
+    pct7d: Double
+) -> [ThresholdCross] {
+    var alerts: [ThresholdCross] = []
+    if warningEnabled {
+        if pct5h >= Double(warningPercent) {
+            alerts.append(.init(window: "5h", kind: "warning", pct: Int(round(pct5h))))
+        }
+        if pct7d >= Double(warningPercent) {
+            alerts.append(.init(window: "7d", kind: "warning", pct: Int(round(pct7d))))
+        }
+    }
+    if criticalEnabled {
+        if pct5h >= Double(criticalPercent) {
+            alerts.append(.init(window: "5h", kind: "critical", pct: Int(round(pct5h))))
+        }
+        if pct7d >= Double(criticalPercent) {
+            alerts.append(.init(window: "7d", kind: "critical", pct: Int(round(pct7d))))
+        }
+    }
+    return alerts
 }

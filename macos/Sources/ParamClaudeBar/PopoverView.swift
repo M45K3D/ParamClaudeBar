@@ -242,29 +242,6 @@ private struct SetupView: View {
 
         Divider()
 
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Notifications")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            SetupThresholdSlider(
-                label: "5-hour window",
-                value: notificationService.threshold5h,
-                onChange: { notificationService.setThreshold5h($0) }
-            )
-            SetupThresholdSlider(
-                label: "7-day window",
-                value: notificationService.threshold7d,
-                onChange: { notificationService.setThreshold7d($0) }
-            )
-            SetupThresholdSlider(
-                label: "Extra usage",
-                value: notificationService.thresholdExtra,
-                onChange: { notificationService.setThresholdExtra($0) }
-            )
-        }
-
-        Divider()
 
         VStack(alignment: .leading, spacing: 6) {
             Text("Polling Interval")

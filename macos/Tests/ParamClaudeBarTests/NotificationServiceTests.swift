@@ -2,113 +2,86 @@ import XCTest
 @testable import ParamClaudeBar
 
 final class NotificationServiceTests: XCTestCase {
-    func testNoAlertsWhenAllOff() {
-        let alerts = crossedThresholds(
-            threshold5h: 0, threshold7d: 0, thresholdExtra: 0,
-            previous5h: 40, previous7d: 30, previousExtra: 20,
-            current5h: 90, current7d: 85, currentExtra: 80
+    func testNoCrossesWhenAllOff() {
+        let alerts = threshholdCrosses(
+            warningEnabled: false,
+            criticalEnabled: false,
+            warningPercent: 75,
+            criticalPercent: 90,
+            pct5h: 80,
+            pct7d: 80
         )
         XCTAssertTrue(alerts.isEmpty)
     }
 
-    func testOnly5hFires() {
-        let alerts = crossedThresholds(
-            threshold5h: 80, threshold7d: 0, thresholdExtra: 0,
-            previous5h: 70, previous7d: 50, previousExtra: 10,
-            current5h: 85, current7d: 90, currentExtra: 50
-        )
-        XCTAssertEqual(alerts, [ThresholdAlert(window: "5-hour", pct: 85)])
-    }
-
-    func testOnly7dFires() {
-        let alerts = crossedThresholds(
-            threshold5h: 0, threshold7d: 80, thresholdExtra: 0,
-            previous5h: 70, previous7d: 70, previousExtra: 10,
-            current5h: 85, current7d: 85, currentExtra: 50
-        )
-        XCTAssertEqual(alerts, [ThresholdAlert(window: "7-day", pct: 85)])
-    }
-
-    func testOnlyExtraFires() {
-        let alerts = crossedThresholds(
-            threshold5h: 0, threshold7d: 0, thresholdExtra: 50,
-            previous5h: 70, previous7d: 70, previousExtra: 40,
-            current5h: 85, current7d: 85, currentExtra: 60
-        )
-        XCTAssertEqual(alerts, [ThresholdAlert(window: "Extra usage", pct: 60)])
-    }
-
-    func testAllThreeFireSimultaneously() {
-        let alerts = crossedThresholds(
-            threshold5h: 80, threshold7d: 80, thresholdExtra: 50,
-            previous5h: 70, previous7d: 70, previousExtra: 40,
-            current5h: 85, current7d: 90, currentExtra: 60
+    func testWarningFiresForBothWindows() {
+        let alerts = threshholdCrosses(
+            warningEnabled: true,
+            criticalEnabled: false,
+            warningPercent: 75,
+            criticalPercent: 90,
+            pct5h: 76,
+            pct7d: 75
         )
         XCTAssertEqual(alerts, [
-            ThresholdAlert(window: "5-hour", pct: 85),
-            ThresholdAlert(window: "7-day", pct: 90),
-            ThresholdAlert(window: "Extra usage", pct: 60),
+            ThresholdCross(window: "5h", kind: "warning", pct: 76),
+            ThresholdCross(window: "7d", kind: "warning", pct: 75)
         ])
     }
 
-    func testNoAlertWhenStayingAbove() {
-        let alerts = crossedThresholds(
-            threshold5h: 80, threshold7d: 80, thresholdExtra: 50,
-            previous5h: 85, previous7d: 90, previousExtra: 60,
-            current5h: 88, current7d: 92, currentExtra: 65
-        )
-        XCTAssertTrue(alerts.isEmpty)
-    }
-
-    func testNoAlertWhenStayingBelow() {
-        let alerts = crossedThresholds(
-            threshold5h: 80, threshold7d: 80, thresholdExtra: 50,
-            previous5h: 50, previous7d: 60, previousExtra: 30,
-            current5h: 70, current7d: 75, currentExtra: 45
-        )
-        XCTAssertTrue(alerts.isEmpty)
-    }
-
-    func testExactThresholdTriggers() {
-        let alerts = crossedThresholds(
-            threshold5h: 80, threshold7d: 0, thresholdExtra: 0,
-            previous5h: 79, previous7d: 50, previousExtra: 10,
-            current5h: 80, current7d: 50, currentExtra: 10
-        )
-        XCTAssertEqual(alerts, [ThresholdAlert(window: "5-hour", pct: 80)])
-    }
-
-    func testFirstPollFiresWhenAlreadyAboveThreshold() {
-        let alerts = crossedThresholds(
-            threshold5h: 25, threshold7d: 5, thresholdExtra: 0,
-            previous5h: 0, previous7d: 0, previousExtra: 0,
-            current5h: 60, current7d: 40, currentExtra: 10
+    func testCriticalFiresAndIncludesWarningStillBelow() {
+        let alerts = threshholdCrosses(
+            warningEnabled: true,
+            criticalEnabled: true,
+            warningPercent: 75,
+            criticalPercent: 90,
+            pct5h: 92,
+            pct7d: 70
         )
         XCTAssertEqual(alerts, [
-            ThresholdAlert(window: "5-hour", pct: 60),
-            ThresholdAlert(window: "7-day", pct: 40),
+            ThresholdCross(window: "5h", kind: "warning", pct: 92),
+            ThresholdCross(window: "5h", kind: "critical", pct: 92)
         ])
     }
 
-    func testFirstPollDoesNotFireWhenBelowThreshold() {
-        let alerts = crossedThresholds(
-            threshold5h: 80, threshold7d: 80, thresholdExtra: 0,
-            previous5h: 0, previous7d: 0, previousExtra: 0,
-            current5h: 30, current7d: 50, currentExtra: 10
+    func testNothingFiresBelowThresholds() {
+        let alerts = threshholdCrosses(
+            warningEnabled: true,
+            criticalEnabled: true,
+            warningPercent: 75,
+            criticalPercent: 90,
+            pct5h: 50,
+            pct7d: 60
         )
         XCTAssertTrue(alerts.isEmpty)
     }
 
-    func testDifferentThresholdsPerWindow() {
-        let alerts = crossedThresholds(
-            threshold5h: 90, threshold7d: 50, thresholdExtra: 70,
-            previous5h: 85, previous7d: 45, previousExtra: 65,
-            current5h: 95, current7d: 55, currentExtra: 75
-        )
-        XCTAssertEqual(alerts, [
-            ThresholdAlert(window: "5-hour", pct: 95),
-            ThresholdAlert(window: "7-day", pct: 55),
-            ThresholdAlert(window: "Extra usage", pct: 75),
-        ])
+    // Integration-ish: make sure debounce state survives one evaluate(...)
+    // call, by exercising a fresh suite-scoped UserDefaults instance.
+    func testEvaluateDoesNotCrashAndPersistsDebounceState() {
+        let defaultsName = "ParamClaudeBar.Tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: defaultsName)!
+        defer {
+            defaults.removePersistentDomain(forName: defaultsName)
+        }
+        let service = MainActor.assumeIsolated {
+            NotificationService(defaults: defaults)
+        }
+        MainActor.assumeIsolated {
+            service.warningEnabled = true
+            service.warningPercent = 75
+            service.criticalEnabled = false
+            service.burnRateEnabled = false
+            service.resetEnabled = false
+            service.evaluate(
+                pct5h: 80,
+                pct7d: 50,
+                reset5h: Date().addingTimeInterval(3600),
+                reset7d: Date().addingTimeInterval(7 * 86400),
+                burnRate5h: nil
+            )
+        }
+        // After evaluate, debounce keys for 5h warning should be present.
+        XCTAssertNotNil(defaults.string(forKey: "notify.last.warning.5h"))
     }
 }

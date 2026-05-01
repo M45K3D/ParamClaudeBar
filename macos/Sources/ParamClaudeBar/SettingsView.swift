@@ -15,11 +15,8 @@ struct SettingsWindowContent: View {
             AppearanceSettingsTab(settings: settings)
                 .tabItem { Label("Appearance", systemImage: "paintpalette") }
 
-            NotificationsSettingsTab(
-                notificationService: notificationService,
-                settings: settings
-            )
-            .tabItem { Label("Notifications", systemImage: "bell") }
+            NotificationsSettingsTab(notificationService: notificationService)
+                .tabItem { Label("Notifications", systemImage: "bell") }
 
             AccountSettingsTab(service: service)
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
@@ -106,33 +103,45 @@ private struct AppearanceSettingsTab: View {
 
 private struct NotificationsSettingsTab: View {
     @ObservedObject var notificationService: NotificationService
-    @ObservedObject var settings: SettingsStore
 
     var body: some View {
         Form {
-            Section("Thresholds") {
+            Section("Warning") {
+                Toggle("Warning notification", isOn: $notificationService.warningEnabled)
                 ThresholdSlider(
-                    label: "5-hour window",
-                    value: notificationService.threshold5h,
-                    onChange: { notificationService.setThreshold5h($0) }
+                    label: "Trigger at",
+                    value: notificationService.warningPercent,
+                    range: 50...95,
+                    step: 5,
+                    onChange: { notificationService.warningPercent = $0 }
                 )
-                ThresholdSlider(
-                    label: "7-day window",
-                    value: notificationService.threshold7d,
-                    onChange: { notificationService.setThreshold7d($0) }
-                )
-                ThresholdSlider(
-                    label: "Extra usage",
-                    value: notificationService.thresholdExtra,
-                    onChange: { notificationService.setThresholdExtra($0) }
-                )
+                .disabled(!notificationService.warningEnabled)
             }
 
-            Section("Alerts") {
-                Toggle("Warning notification", isOn: $settings.notifyWarningEnabled)
-                Toggle("Critical notification", isOn: $settings.notifyCriticalEnabled)
-                Toggle("Burn-rate alert", isOn: $settings.notifyBurnRateEnabled)
-                Toggle("Reset notification", isOn: $settings.notifyResetEnabled)
+            Section("Critical") {
+                Toggle("Critical notification", isOn: $notificationService.criticalEnabled)
+                ThresholdSlider(
+                    label: "Trigger at",
+                    value: notificationService.criticalPercent,
+                    range: 75...99,
+                    step: 1,
+                    onChange: { notificationService.criticalPercent = $0 }
+                )
+                .disabled(!notificationService.criticalEnabled)
+            }
+
+            Section("Other alerts") {
+                Toggle("Burn-rate alert (≤30 min to limit)", isOn: $notificationService.burnRateEnabled)
+                Toggle("Reset notification", isOn: $notificationService.resetEnabled)
+            }
+
+            Section {
+                HStack {
+                    Spacer()
+                    Button("Send Test Notification") {
+                        notificationService.sendTestNotification()
+                    }
+                }
             }
         }
         .formStyle(.grouped)
@@ -337,6 +346,8 @@ func launchAtLoginInstallDirectories(fileManager: FileManager = .default) -> [UR
 private struct ThresholdSlider: View {
     let label: String
     let value: Int
+    var range: ClosedRange<Int> = 0...100
+    var step: Int = 5
     let onChange: (Int) -> Void
 
     var body: some View {
@@ -346,13 +357,14 @@ private struct ThresholdSlider: View {
                     get: { Double(value) },
                     set: { onChange(Int($0)) }
                 ),
-                in: 0...100,
-                step: 5
+                in: Double(range.lowerBound)...Double(range.upperBound),
+                step: Double(step)
             )
         } label: {
             Text(label)
-            Text(value > 0 ? "\(value)%" : "Off")
+            Text("\(value)%")
                 .foregroundStyle(.secondary)
+                .monospacedDigit()
         }
         .alignmentGuide(.firstTextBaseline) { d in
             d[VerticalAlignment.center]
