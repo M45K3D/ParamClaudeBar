@@ -146,6 +146,11 @@ final class UsageServiceTests: XCTestCase {
             }
         }
 
+        // Pin polling to 1 minute so the backoff math in this test stays
+        // deterministic regardless of the default polling interval.
+        UserDefaults.standard.set(1, forKey: "pollingMinutes")
+        UserDefaults.standard.set(true, forKey: "polling.migration.bumped1mTo2m")
+
         let service = UsageService(
             session: makeSession(),
             usageEndpoint: usageURL,
