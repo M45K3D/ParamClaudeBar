@@ -19,7 +19,7 @@ private let innerRadius: CGFloat =
 private let iconCenter = NSPoint(x: iconSize / 2, y: iconSize / 2)
 
 func renderIcon(pct5h: Double, pct7d: Double) -> NSImage {
-    makeIcon(frac5h: clampFraction(pct5h / 100), frac7d: clampFraction(pct7d / 100))
+    makeIcon(frac5h: clampFraction(pct5h), frac7d: clampFraction(pct7d))
 }
 
 func renderUnauthenticatedIcon() -> NSImage {
