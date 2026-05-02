@@ -8,14 +8,7 @@ struct UsageChartView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("", selection: $selectedRange) {
-                ForEach(TimeRange.allCases) { range in
-                    Text(range.rawValue).tag(range)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.small)
+            rangeSelector
 
             let points = historyService.downsampledPoints(for: selectedRange)
 
@@ -24,6 +17,27 @@ struct UsageChartView: View {
             } else {
                 chartView(points: points)
             }
+        }
+    }
+
+    private var rangeSelector: some View {
+        HStack(spacing: 14) {
+            ForEach(TimeRange.allCases) { range in
+                Button {
+                    selectedRange = range
+                } label: {
+                    Text(range.rawValue)
+                        .font(.system(size: 11, weight: selectedRange == range ? .semibold : .regular))
+                        .foregroundStyle(selectedRange == range ? Color.primary : Color.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+            HStack(spacing: 10) {
+                LegendDot(color: Theme.fiveHourAccent, label: "5h")
+                LegendDot(color: Theme.sevenDayAccent, label: "7d")
+            }
+            .font(.system(size: 10))
         }
     }
 
@@ -127,13 +141,7 @@ struct UsageChartView: View {
             "5h": Theme.fiveHourAccent,
             "7d": Theme.sevenDayAccent
         ])
-        .chartLegend(position: .bottom, spacing: 4) {
-            HStack(spacing: 12) {
-                LegendDot(color: Theme.fiveHourAccent, label: "5h")
-                LegendDot(color: Theme.sevenDayAccent, label: "7d")
-            }
-            .font(.caption2)
-        }
+        .chartLegend(.hidden)
         .chartPlotStyle { plot in
             plot.clipped()
         }
