@@ -108,10 +108,8 @@ struct PopoverView: View {
                 }
             }
 
-            DisclosureView(label: "History") {
-                UsageChartView(historyService: historyService)
-                    .padding(.top, 4)
-            }
+            UsageChartView(historyService: historyService)
+                .padding(.top, 4)
 
             if let error = service.lastError {
                 let isSlowdown = error.lowercased().contains("slowing down")
@@ -432,38 +430,6 @@ private struct FooterLinkButtonStyle: ButtonStyle {
         if pressed { return 0.10 }
         if isHovering { return 0.06 }
         return 0
-    }
-}
-
-// MARK: - Disclosure (tap to reveal the chart)
-
-private struct DisclosureView<Content: View>: View {
-    let label: String
-    @ViewBuilder var content: () -> Content
-    @State private var expanded = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
-                    Text(label.uppercased())
-                        .font(.system(size: 9, weight: .semibold))
-                        .tracking(1.4)
-                    Spacer()
-                }
-                .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-
-            if expanded {
-                content()
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
     }
 }
 
