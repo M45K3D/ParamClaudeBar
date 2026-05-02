@@ -3,228 +3,69 @@ import Charts
 
 struct UsageChartView: View {
     @ObservedObject var historyService: UsageHistoryService
-    @State private var selectedRange: TimeRange = .day1
-    @State private var hoverDate: Date?
+
+    private let range: TimeRange = .day1
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            rangeSelector
+        let points = historyService.downsampledPoints(for: range)
 
-            let points = historyService.downsampledPoints(for: selectedRange)
-
+        HStack(alignment: .center, spacing: 10) {
             if points.isEmpty {
                 emptyState
             } else {
                 chartView(points: points)
+                legend
             }
         }
-    }
-
-    private var rangeSelector: some View {
-        HStack(spacing: 14) {
-            ForEach(TimeRange.allCases) { range in
-                Button {
-                    selectedRange = range
-                } label: {
-                    Text(range.rawValue)
-                        .font(.system(size: 11, weight: selectedRange == range ? .semibold : .regular))
-                        .foregroundStyle(selectedRange == range ? Color.primary : Color.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer()
-            HStack(spacing: 10) {
-                LegendDot(color: Theme.fiveHourAccent, label: "5h")
-                LegendDot(color: Theme.sevenDayAccent, label: "7d")
-            }
-            .font(.system(size: 10))
-        }
+        .frame(height: 50)
     }
 
     @ViewBuilder
     private var emptyState: some View {
-        Text("Collecting usage history… check back in a few minutes")
-            .font(.caption)
+        Text("Collecting usage history…")
+            .font(.caption2)
             .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, minHeight: 140, alignment: .center)
-            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, alignment: .center)
     }
 
     @ViewBuilder
     private func chartView(points: [UsageDataPoint]) -> some View {
-        let interpolated = hoverDate.flatMap {
-            UsageChartInterpolation.interpolateValues(at: $0, in: points)
-        }
-
         Chart {
-            // 5-hour: filled accent area with a line on top
-            ForEach(points) { point in
-                AreaMark(
-                    x: .value("Time", point.timestamp),
-                    y: .value("Usage", point.pct5h * 100)
-                )
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [
-                            Theme.fiveHourAccent.opacity(0.30),
-                            Theme.fiveHourAccent.opacity(0.05)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .interpolationMethod(.catmullRom)
-            }
-
             ForEach(points) { point in
                 LineMark(
                     x: .value("Time", point.timestamp),
                     y: .value("Usage", point.pct5h * 100)
                 )
-                .foregroundStyle(by: .value("Window", "5h"))
+                .foregroundStyle(Theme.fiveHourAccent)
+                .lineStyle(StrokeStyle(lineWidth: 1.5))
                 .interpolationMethod(.catmullRom)
             }
 
-            // 7-day: line only
             ForEach(points) { point in
                 LineMark(
                     x: .value("Time", point.timestamp),
                     y: .value("Usage", point.pct7d * 100)
                 )
-                .foregroundStyle(by: .value("Window", "7d"))
+                .foregroundStyle(Theme.sevenDayAccent)
+                .lineStyle(StrokeStyle(lineWidth: 1.5))
                 .interpolationMethod(.catmullRom)
             }
-
-            if let iv = interpolated {
-                RuleMark(x: .value("Selected", iv.date))
-                    .foregroundStyle(.secondary.opacity(0.4))
-                    .lineStyle(StrokeStyle(lineWidth: 1))
-
-                PointMark(
-                    x: .value("Time", iv.date),
-                    y: .value("Usage", iv.pct5h * 100)
-                )
-                .foregroundStyle(Theme.fiveHourAccent)
-                .symbolSize(28)
-
-                PointMark(
-                    x: .value("Time", iv.date),
-                    y: .value("Usage", iv.pct7d * 100)
-                )
-                .foregroundStyle(Theme.sevenDayAccent)
-                .symbolSize(28)
-            }
         }
-        .chartXScale(domain: Date.now.addingTimeInterval(-selectedRange.interval)...Date.now)
+        .chartXScale(domain: Date.now.addingTimeInterval(-range.interval)...Date.now)
         .chartYScale(domain: 0...100)
-        .chartYAxis {
-            AxisMarks(values: [25, 50, 75, 100]) { value in
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [2, 3]))
-                    .foregroundStyle(.secondary.opacity(0.4))
-                AxisValueLabel {
-                    if let v = value.as(Int.self) {
-                        Text("\(v)%")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: xAxisDesiredCount)) { _ in
-                AxisValueLabel(format: xAxisFormat)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .chartForegroundStyleScale([
-            "5h": Theme.fiveHourAccent,
-            "7d": Theme.sevenDayAccent
-        ])
+        .chartYAxis(.hidden)
+        .chartXAxis(.hidden)
         .chartLegend(.hidden)
-        .chartPlotStyle { plot in
-            plot.clipped()
-        }
-        .chartOverlay { proxy in
-            GeometryReader { geo in
-                Rectangle()
-                    .fill(.clear)
-                    .contentShape(Rectangle())
-                    .onContinuousHover { phase in
-                        switch phase {
-                        case .active(let location):
-                            let plotOrigin = geo[proxy.plotFrame!].origin
-                            let x = location.x - plotOrigin.x
-                            if let date: Date = proxy.value(atX: x) {
-                                hoverDate = date
-                            }
-                        case .ended:
-                            hoverDate = nil
-                        }
-                    }
-            }
-        }
-        .overlay(alignment: .top) {
-            if let iv = interpolated {
-                tooltipView(date: iv.date, pct5h: iv.pct5h, pct7d: iv.pct7d)
-            }
-        }
-        .frame(height: 110)
-        .padding(.top, 2)
+        .chartPlotStyle { plot in plot.clipped() }
+        .frame(maxWidth: .infinity)
     }
 
-    @ViewBuilder
-    private func tooltipView(date: Date, pct5h: Double, pct7d: Double) -> some View {
-        VStack(spacing: 2) {
-            Text(date, format: tooltipDateFormat)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-            HStack(spacing: 8) {
-                Label("\(Int(round(pct5h * 100)))%", systemImage: "circle.fill")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(Theme.fiveHourAccent)
-                Label("\(Int(round(pct7d * 100)))%", systemImage: "circle.fill")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(Theme.sevenDayAccent)
-            }
-            .monospacedDigit()
+    private var legend: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            LegendDot(color: Theme.fiveHourAccent, label: "5h")
+            LegendDot(color: Theme.sevenDayAccent, label: "7d")
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
-    }
-
-    // MARK: - Formatting
-
-    private var xAxisFormat: Date.FormatStyle {
-        switch selectedRange {
-        case .hour1, .hour6, .day1:
-            return .dateTime.hour().minute().locale(.init(identifier: "en_GB"))
-        case .day7, .day30:
-            return .dateTime.day().month(.abbreviated).locale(.init(identifier: "en_GB"))
-        }
-    }
-
-    private var xAxisDesiredCount: Int {
-        switch selectedRange {
-        case .hour1, .hour6: return 4
-        case .day1: return 5
-        case .day7: return 4
-        case .day30: return 5
-        }
-    }
-
-    private var tooltipDateFormat: Date.FormatStyle {
-        let locale = Locale(identifier: "en_GB")
-        switch selectedRange {
-        case .hour1, .hour6, .day1:
-            return .dateTime.hour().minute().locale(locale)
-        case .day7:
-            return .dateTime.weekday(.abbreviated).hour().minute().locale(locale)
-        case .day30:
-            return .dateTime.month(.abbreviated).day().hour().locale(locale)
-        }
+        .font(.system(size: 9))
     }
 }
 
@@ -236,7 +77,7 @@ private struct LegendDot: View {
         HStack(spacing: 4) {
             Circle()
                 .fill(color)
-                .frame(width: 7, height: 7)
+                .frame(width: 5, height: 5)
             Text(label)
                 .foregroundStyle(.secondary)
         }
