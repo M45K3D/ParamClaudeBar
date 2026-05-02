@@ -3,6 +3,7 @@ import Charts
 
 struct UsageChartView: View {
     @ObservedObject var historyService: UsageHistoryService
+    @State private var hoverDate: Date?
 
     private let range: TimeRange = .day1
 
@@ -30,6 +31,10 @@ struct UsageChartView: View {
 
     @ViewBuilder
     private func chartView(points: [UsageDataPoint]) -> some View {
+        let interpolated = hoverDate.flatMap {
+            UsageChartInterpolation.interpolateValues(at: $0, in: points)
+        }
+
         Chart {
             ForEach(points) { point in
                 LineMark(
@@ -52,6 +57,26 @@ struct UsageChartView: View {
                 .lineStyle(StrokeStyle(lineWidth: 1.5))
                 .interpolationMethod(.catmullRom)
             }
+
+            if let iv = interpolated {
+                RuleMark(x: .value("Selected", iv.date))
+                    .foregroundStyle(.secondary.opacity(0.35))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+
+                PointMark(
+                    x: .value("Time", iv.date),
+                    y: .value("Usage", iv.pct5h * 100)
+                )
+                .foregroundStyle(Theme.fiveHourAccent)
+                .symbolSize(24)
+
+                PointMark(
+                    x: .value("Time", iv.date),
+                    y: .value("Usage", iv.pct7d * 100)
+                )
+                .foregroundStyle(Theme.sevenDayAccent)
+                .symbolSize(24)
+            }
         }
         .chartForegroundStyleScale([
             "5h": Theme.fiveHourAccent,
@@ -63,7 +88,51 @@ struct UsageChartView: View {
         .chartXAxis(.hidden)
         .chartLegend(.hidden)
         .chartPlotStyle { plot in plot.clipped() }
+        .chartOverlay { proxy in
+            GeometryReader { geo in
+                Rectangle()
+                    .fill(.clear)
+                    .contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            guard let plotFrame = proxy.plotFrame else { return }
+                            let plotOrigin = geo[plotFrame].origin
+                            let x = location.x - plotOrigin.x
+                            if let date: Date = proxy.value(atX: x) {
+                                hoverDate = date
+                            }
+                        case .ended:
+                            hoverDate = nil
+                        }
+                    }
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            if let iv = interpolated {
+                tooltip(date: iv.date, pct5h: iv.pct5h, pct7d: iv.pct7d)
+                    .padding(4)
+            }
+        }
         .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private func tooltip(date: Date, pct5h: Double, pct7d: Double) -> some View {
+        let timeStr = date.formatted(.dateTime.hour().minute().locale(.init(identifier: "en_GB")))
+        HStack(spacing: 6) {
+            Text(timeStr)
+                .foregroundStyle(.secondary)
+            Text("\(Int(round(pct5h * 100)))%")
+                .foregroundStyle(Theme.fiveHourAccent)
+            Text("\(Int(round(pct7d * 100)))%")
+                .foregroundStyle(Theme.sevenDayAccent)
+        }
+        .font(.system(size: 9, weight: .medium))
+        .monospacedDigit()
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 4))
     }
 
     private var legend: some View {
