@@ -26,8 +26,10 @@
     <string>14.0</string>
     <key>SUEnableAutomaticChecks</key>
     <true/>
+    <key>SUAutomaticallyUpdate</key>
+    <true/>
     <key>SUScheduledCheckInterval</key>
-    <integer>86400</integer>
+    <integer>3600</integer>
     <key>SUPublicEDKey</key>
     <string>nzu3F6F0rYOUWW/17emicxjJPRAgzscxT3MJWzmUO/k=</string>
 </dict>
