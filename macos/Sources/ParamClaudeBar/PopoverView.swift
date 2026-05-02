@@ -358,23 +358,19 @@ private struct CardFooter: View {
                 .keyboardShortcut("r", modifiers: .command)
             }
 
-            HStack(spacing: 14) {
+            HStack(spacing: 4) {
                 SettingsLink {
                     Text("Settings")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(FooterLinkButtonStyle())
 
                 if appUpdater.isConfigured {
                     Button {
                         appUpdater.checkForUpdates()
                     } label: {
                         Text("Check for updates")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(FooterLinkButtonStyle())
                     .disabled(!appUpdater.canCheckForUpdates)
                 }
 
@@ -387,13 +383,55 @@ private struct CardFooter: View {
                 Spacer()
 
                 Button("Quit") { NSApplication.shared.terminate(nil) }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
+                    .buttonStyle(FooterLinkButtonStyle())
                     .keyboardShortcut("q", modifiers: .command)
+
+                if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+                    Text("v\(version)")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .monospacedDigit()
+                        .padding(.leading, 4)
+                }
             }
         }
         .onReceive(tickerTimer) { ticker = $0 }
+    }
+}
+
+// MARK: - Footer link button style
+
+private struct FooterLinkButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 10))
+            .foregroundStyle(foreground(pressed: configuration.isPressed))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.primary.opacity(background(pressed: configuration.isPressed)))
+            )
+            .contentShape(Rectangle())
+            .onHover { isHovering = $0 }
+            .animation(.easeOut(duration: 0.12), value: isHovering)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+    }
+
+    private func foreground(pressed: Bool) -> HierarchicalShapeStyle {
+        guard isEnabled else { return .quaternary }
+        if pressed || isHovering { return .secondary }
+        return .tertiary
+    }
+
+    private func background(pressed: Bool) -> Double {
+        guard isEnabled else { return 0 }
+        if pressed { return 0.10 }
+        if isHovering { return 0.06 }
+        return 0
     }
 }
 
