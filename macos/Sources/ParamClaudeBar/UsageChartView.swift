@@ -34,9 +34,10 @@ struct UsageChartView: View {
             ForEach(points) { point in
                 LineMark(
                     x: .value("Time", point.timestamp),
-                    y: .value("Usage", point.pct5h * 100)
+                    y: .value("Usage", point.pct5h * 100),
+                    series: .value("Window", "5h")
                 )
-                .foregroundStyle(Theme.fiveHourAccent)
+                .foregroundStyle(by: .value("Window", "5h"))
                 .lineStyle(StrokeStyle(lineWidth: 1.5))
                 .interpolationMethod(.catmullRom)
             }
@@ -44,13 +45,18 @@ struct UsageChartView: View {
             ForEach(points) { point in
                 LineMark(
                     x: .value("Time", point.timestamp),
-                    y: .value("Usage", point.pct7d * 100)
+                    y: .value("Usage", point.pct7d * 100),
+                    series: .value("Window", "7d")
                 )
-                .foregroundStyle(Theme.sevenDayAccent)
+                .foregroundStyle(by: .value("Window", "7d"))
                 .lineStyle(StrokeStyle(lineWidth: 1.5))
                 .interpolationMethod(.catmullRom)
             }
         }
+        .chartForegroundStyleScale([
+            "5h": Theme.fiveHourAccent,
+            "7d": Theme.sevenDayAccent
+        ])
         .chartXScale(domain: Date.now.addingTimeInterval(-range.interval)...Date.now)
         .chartYScale(domain: 0...100)
         .chartYAxis(.hidden)

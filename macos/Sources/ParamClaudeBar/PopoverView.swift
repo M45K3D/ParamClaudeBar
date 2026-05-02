@@ -346,6 +346,13 @@ private struct CardFooter: View {
                         .font(.system(size: 11))
                 }
                 Spacer()
+                if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+                    Text("v\(version)")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .monospacedDigit()
+                        .padding(.trailing, 8)
+                }
                 Button {
                     Task { await service.fetchUsage() }
                 } label: {
@@ -383,14 +390,6 @@ private struct CardFooter: View {
                 Button("Quit") { NSApplication.shared.terminate(nil) }
                     .buttonStyle(FooterLinkButtonStyle())
                     .keyboardShortcut("q", modifiers: .command)
-
-                if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
-                    Text("v\(version)")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                        .monospacedDigit()
-                        .padding(.leading, 4)
-                }
             }
         }
         .onReceive(tickerTimer) { ticker = $0 }
