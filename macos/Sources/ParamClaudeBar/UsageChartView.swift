@@ -3,6 +3,8 @@ import Charts
 
 struct UsageChartView: View {
     @ObservedObject var historyService: UsageHistoryService
+    var projection: BurnRateProjection? = nil
+
     @State private var hoverDate: Date?
 
     private let range: TimeRange = .day1
@@ -68,6 +70,35 @@ struct UsageChartView: View {
                 .interpolationMethod(.catmullRom)
             }
 
+            // Forecast: dashed ghost line extending the 5h curve to the projected
+            // 100% hit time. Only shown when there's both a current point and a
+            // future projection within the chart's right edge.
+            if let latest, let hit = projection?.projectedHitTime, hit > latest.timestamp {
+                LineMark(
+                    x: .value("Time", latest.timestamp),
+                    y: .value("Usage", latest.pct5h * 100),
+                    series: .value("Window", "forecast")
+                )
+                .foregroundStyle(Theme.fiveHourAccent.opacity(0.5))
+                .lineStyle(StrokeStyle(lineWidth: 1.25, dash: [3, 3]))
+
+                LineMark(
+                    x: .value("Time", hit),
+                    y: .value("Usage", 100),
+                    series: .value("Window", "forecast")
+                )
+                .foregroundStyle(Theme.fiveHourAccent.opacity(0.5))
+                .lineStyle(StrokeStyle(lineWidth: 1.25, dash: [3, 3]))
+
+                PointMark(
+                    x: .value("Time", hit),
+                    y: .value("Usage", 100)
+                )
+                .foregroundStyle(Theme.fiveHourAccent.opacity(0.7))
+                .symbolSize(18)
+                .symbol(.cross)
+            }
+
             // Current-value dots at the right edge so "now" is always visible
             if let latest {
                 PointMark(
@@ -110,7 +141,7 @@ struct UsageChartView: View {
             "5h": Theme.fiveHourAccent,
             "7d": Theme.sevenDayAccent
         ])
-        .chartXScale(domain: Date.now.addingTimeInterval(-range.interval)...Date.now)
+        .chartXScale(domain: Date.now.addingTimeInterval(-range.interval)...chartXUpperBound)
         .chartYScale(domain: 0...100)
         .chartYAxis(.hidden)
         .chartXAxis(.hidden)
@@ -194,6 +225,16 @@ struct UsageChartView: View {
             RoundedRectangle(cornerRadius: 5)
                 .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
         )
+    }
+
+    /// Upper bound of the chart's x-axis: usually "now", but extended out to
+    /// include the projected hit point (capped at +6h) so the dashed forecast
+    /// is visible without compressing the history beyond recognition.
+    private var chartXUpperBound: Date {
+        let now = Date.now
+        guard let hit = projection?.projectedHitTime, hit > now else { return now }
+        let cap = now.addingTimeInterval(6 * 3600)
+        return min(hit.addingTimeInterval(10 * 60), cap)
     }
 
     private func relativeTime(from date: Date) -> String {

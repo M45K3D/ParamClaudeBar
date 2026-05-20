@@ -69,6 +69,15 @@ struct PopoverView: View {
 
     // MARK: - Authenticated body
 
+    private var projection5h: BurnRateProjection {
+        BurnRateCalculator.project(
+            points: historyService.history.dataPoints,
+            valueExtractor: { $0.pct5h * 100 },
+            currentPercent: service.pct5h * 100,
+            resetTime: service.usage?.fiveHour?.resetsAtDate
+        )
+    }
+
     @ViewBuilder
     private var authenticatedBody: some View {
         VStack(spacing: 18) {
@@ -97,19 +106,29 @@ struct PopoverView: View {
                     InlineExtraUsageLine(extra: extra)
                 }
                 if service.usage?.fiveHour != nil {
-                    BurnRateSentence(
-                        projection: BurnRateCalculator.project(
-                            points: historyService.history.dataPoints,
-                            valueExtractor: { $0.pct5h * 100 },
-                            currentPercent: service.pct5h * 100,
-                            resetTime: service.usage?.fiveHour?.resetsAtDate
-                        )
-                    )
+                    BurnRateSentence(projection: projection5h)
                 }
             }
 
-            UsageChartView(historyService: historyService)
-                .padding(.top, 4)
+            UsageChartView(
+                historyService: historyService,
+                projection: projection5h
+            )
+            .padding(.top, 4)
+
+            HStack {
+                Spacer()
+                Link(destination: URL(string: "https://claude.ai")!) {
+                    HStack(spacing: 3) {
+                        Text("Open Claude")
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 8, weight: .semibold))
+                    }
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.top, -2)
 
             if let error = service.lastError {
                 let isSlowdown = error.lowercased().contains("slowing down")
@@ -265,6 +284,9 @@ private struct WindowRow: View {
     let bucket: UsageBucket?
     let tintForFraction: (Double) -> Color
 
+    @State private var ticker = Date()
+    private let tickerTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+
     private var fraction: Double {
         max(0, min(1, (bucket?.utilization ?? 0) / 100.0))
     }
@@ -281,7 +303,7 @@ private struct WindowRow: View {
                     .foregroundStyle(.primary)
                 Spacer()
                 if let resetDate = bucket?.resetsAtDate {
-                    Text(resetWallClock(for: resetDate, prefix: true))
+                    Text(resetSummary(for: resetDate, now: ticker))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -305,6 +327,7 @@ private struct WindowRow: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .animation(.easeInOut(duration: 0.25), value: fraction)
+        .onReceive(tickerTimer) { ticker = $0 }
     }
 }
 
@@ -518,6 +541,7 @@ private struct BurnRateSentence: View {
         HStack(spacing: 4) {
             Text(verbatim: leading)
                 .foregroundStyle(.secondary)
+                .help(leadingHelp)
             if let trailing {
                 Text("·")
                     .foregroundStyle(.tertiary)
@@ -528,6 +552,16 @@ private struct BurnRateSentence: View {
         }
         .font(.system(size: 10))
         .monospacedDigit()
+    }
+
+    private var leadingHelp: String {
+        if projection.burnRatePerHour > 0 {
+            return "Linear projection from the last 30 minutes of usage."
+        } else if projection.burnRatePerHour < 0 {
+            return "Older minutes are rolling out of the 5-hour window faster than new usage is being added — the rolling total is shrinking."
+        } else {
+            return "No measurable change in the 5-hour window over the last 30 minutes."
+        }
     }
 
     private var leading: String {
@@ -549,6 +583,22 @@ private struct BurnRateSentence: View {
         }
         return nil
     }
+}
+
+/// Composes the clock-time reset string with a live countdown ("in 4h 23m").
+/// Countdown is omitted when the reset is more than 24 hours away (the
+/// weekday is already the most useful anchor) or once the reset has passed.
+private func resetSummary(for date: Date, now: Date) -> String {
+    let clock = resetWallClock(for: date, now: now, prefix: true)
+    let secs = date.timeIntervalSince(now)
+    guard secs > 0, secs <= 24 * 3600 else { return clock }
+    let totalMins = Int(secs / 60)
+    if totalMins < 1 { return "\(clock) · <1m" }
+    if totalMins < 60 { return "\(clock) · in \(totalMins)m" }
+    let hours = totalMins / 60
+    let mins = totalMins % 60
+    let countdown = mins == 0 ? "in \(hours)h" : "in \(hours)h \(mins)m"
+    return "\(clock) · \(countdown)"
 }
 
 private func resetWallClock(
