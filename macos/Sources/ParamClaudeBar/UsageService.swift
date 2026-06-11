@@ -7,6 +7,7 @@ class UsageService: ObservableObject {
     @Published var usage: UsageResponse?
     @Published var lastError: String?
     @Published var lastUpdated: Date?
+    @Published private(set) var isFetching: Bool = false
     @Published var isAuthenticated = false
     @Published var isAwaitingCode = false
     @Published private(set) var accountEmail: String?
@@ -285,6 +286,9 @@ class UsageService: ObservableObject {
             isAuthenticated = false
             return
         }
+
+        isFetching = true
+        defer { isFetching = false }
 
         do {
             guard let result = try await sendAuthorizedRequest(to: usageEndpoint) else {

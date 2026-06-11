@@ -376,13 +376,9 @@ private struct CardFooter: View {
                         .monospacedDigit()
                         .padding(.trailing, 8)
                 }
-                Button {
+                RefreshButton(isFetching: service.isFetching) {
                     Task { await service.fetchUsage() }
-                } label: {
-                    Text("Refresh")
-                        .font(.system(size: 11, weight: .medium))
                 }
-                .buttonStyle(.plain)
                 .keyboardShortcut("r", modifiers: .command)
             }
 
@@ -416,6 +412,89 @@ private struct CardFooter: View {
             }
         }
         .onReceive(tickerTimer) { ticker = $0 }
+    }
+}
+
+// MARK: - Refresh button
+
+private struct RefreshButton: View {
+    let isFetching: Bool
+    let action: () -> Void
+
+    @State private var isHovering = false
+    @State private var isPressed = false
+    @State private var spin: Double = 0
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 10, weight: .semibold))
+                    .rotationEffect(.degrees(spin))
+                Text("Refresh")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundStyle(foregroundColor)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.primary.opacity(backgroundOpacity))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(borderOpacity), lineWidth: 0.5)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle(isPressed: $isPressed))
+        .disabled(isFetching)
+        .onHover { isHovering = $0 }
+        .onChange(of: isFetching) { _, fetching in
+            if fetching {
+                withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) {
+                    spin += 360
+                }
+            } else {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    let next = (spin / 360).rounded(.up) * 360
+                    spin = next
+                }
+            }
+        }
+        .animation(.easeOut(duration: 0.12), value: isHovering)
+        .animation(.easeOut(duration: 0.08), value: isPressed)
+    }
+
+    private var foregroundColor: Color {
+        if isFetching { return .secondary }
+        if isPressed || isHovering { return .primary }
+        return .primary.opacity(0.85)
+    }
+
+    private var backgroundOpacity: Double {
+        if isFetching { return 0.04 }
+        if isPressed { return 0.14 }
+        if isHovering { return 0.08 }
+        return 0.04
+    }
+
+    private var borderOpacity: Double {
+        if isPressed { return 0.18 }
+        if isHovering { return 0.12 }
+        return 0.08
+    }
+}
+
+private struct PressableButtonStyle: ButtonStyle {
+    @Binding var isPressed: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .onChange(of: configuration.isPressed) { _, pressed in
+                isPressed = pressed
+            }
     }
 }
 
