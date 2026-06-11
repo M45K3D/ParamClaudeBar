@@ -423,14 +423,19 @@ private struct RefreshButton: View {
 
     @State private var isHovering = false
     @State private var isPressed = false
-    @State private var spin: Double = 0
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 10, weight: .semibold))
-                    .rotationEffect(.degrees(spin))
+                    .rotationEffect(.degrees(isFetching ? 360 : 0))
+                    .animation(
+                        isFetching
+                            ? .linear(duration: 0.9).repeatForever(autoreverses: false)
+                            : .easeOut(duration: 0.2),
+                        value: isFetching
+                    )
                 Text("Refresh")
                     .font(.system(size: 11, weight: .medium))
             }
@@ -450,18 +455,6 @@ private struct RefreshButton: View {
         .buttonStyle(PressableButtonStyle(isPressed: $isPressed))
         .disabled(isFetching)
         .onHover { isHovering = $0 }
-        .onChange(of: isFetching) { _, fetching in
-            if fetching {
-                withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) {
-                    spin += 360
-                }
-            } else {
-                withAnimation(.easeOut(duration: 0.25)) {
-                    let next = (spin / 360).rounded(.up) * 360
-                    spin = next
-                }
-            }
-        }
         .animation(.easeOut(duration: 0.12), value: isHovering)
         .animation(.easeOut(duration: 0.08), value: isPressed)
     }
