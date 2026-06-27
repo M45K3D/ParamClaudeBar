@@ -71,6 +71,9 @@ private struct GeneralSettingsTab: View {
                 .pickerStyle(.segmented)
 
                 Toggle("Show burn-rate hint", isOn: $settings.showBurnRateHint)
+
+                Toggle("Colour-code percentage", isOn: $settings.colorCodePercentage)
+                    .disabled(settings.useMonochromeIcon)
             }
         }
         .formStyle(.grouped)

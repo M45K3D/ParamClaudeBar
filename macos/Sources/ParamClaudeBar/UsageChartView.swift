@@ -6,23 +6,53 @@ struct UsageChartView: View {
     var projection: BurnRateProjection? = nil
 
     @State private var hoverDate: Date?
+    @State private var range: TimeRange = .day1
 
-    private let range: TimeRange = .day1
     private let thresholdPct: Double = 80
     private let chartHeight: CGFloat = 70
+
+    /// Lightweight subset offered as quick toggles above the chart.
+    private let rangeOptions: [TimeRange] = [.hour6, .day1, .day7]
 
     var body: some View {
         let points = historyService.downsampledPoints(for: range)
 
-        HStack(alignment: .center, spacing: 12) {
-            if points.isEmpty {
-                emptyState
-            } else {
-                chartView(points: points)
-                legend(latest: points.last)
+        VStack(alignment: .leading, spacing: 6) {
+            rangeToggle
+            HStack(alignment: .center, spacing: 12) {
+                if points.isEmpty {
+                    emptyState
+                } else {
+                    chartView(points: points)
+                    legend(latest: points.last)
+                }
             }
+            .frame(height: chartHeight)
         }
-        .frame(height: chartHeight)
+    }
+
+    private var rangeToggle: some View {
+        HStack(spacing: 4) {
+            ForEach(rangeOptions) { option in
+                Button {
+                    range = option
+                } label: {
+                    Text(option.rawValue)
+                        .font(.system(size: 9, weight: range == option ? .semibold : .regular))
+                        .foregroundStyle(range == option ? Color.primary : Color.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color.primary.opacity(range == option ? 0.10 : 0))
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+        .animation(.easeOut(duration: 0.12), value: range)
     }
 
     @ViewBuilder

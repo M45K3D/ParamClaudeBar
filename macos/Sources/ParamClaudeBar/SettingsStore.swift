@@ -69,6 +69,10 @@ final class SettingsStore: ObservableObject {
         didSet { defaults.set(useMonochromeIcon, forKey: Keys.useMonochromeIcon) }
     }
 
+    @Published var colorCodePercentage: Bool {
+        didSet { defaults.set(colorCodePercentage, forKey: Keys.colorCodePercentage) }
+    }
+
     @Published var notifyWarningEnabled: Bool {
         didSet { defaults.set(notifyWarningEnabled, forKey: Keys.notifyWarningEnabled) }
     }
@@ -98,6 +102,7 @@ final class SettingsStore: ObservableObject {
 
         self.showBurnRateHint = defaults.bool(forKey: Keys.showBurnRateHint)
         self.useMonochromeIcon = defaults.bool(forKey: Keys.useMonochromeIcon)
+        self.colorCodePercentage = (defaults.object(forKey: Keys.colorCodePercentage) as? Bool) ?? true
 
         self.notifyWarningEnabled = (defaults.object(forKey: Keys.notifyWarningEnabled) as? Bool) ?? true
         self.notifyCriticalEnabled = (defaults.object(forKey: Keys.notifyCriticalEnabled) as? Bool) ?? true
@@ -110,6 +115,7 @@ final class SettingsStore: ObservableObject {
         static let appearanceTheme = "appearanceTheme"
         static let showBurnRateHint = "showBurnRateHint"
         static let useMonochromeIcon = "useMonochromeIcon"
+        static let colorCodePercentage = "colorCodePercentage"
         static let notifyWarningEnabled = "notifyWarningEnabled"
         static let notifyCriticalEnabled = "notifyCriticalEnabled"
         static let notifyBurnRateEnabled = "notifyBurnRateEnabled"

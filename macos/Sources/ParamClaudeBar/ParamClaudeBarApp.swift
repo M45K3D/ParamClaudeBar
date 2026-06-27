@@ -92,11 +92,22 @@ private struct MenuBarLabel: View {
         return h > 0 ? "→\(h)h\(m)m" : "→\(m)m"
     }
 
+    /// Severity tint for the menu-bar percentage, reusing the 5-hour palette
+    /// (green → orange → red). Returns nil when colour-coding is disabled or
+    /// the user prefers the monochrome icon, so the system label colour shows.
+    private var percentageColor: Color? {
+        guard settings.colorCodePercentage,
+              !settings.useMonochromeIcon,
+              service.isAuthenticated else { return nil }
+        return Theme.fiveHourTint(forFraction: service.pct5h)
+    }
+
     @ViewBuilder
     private var percentageView: some View {
         HStack(spacing: 2) {
             Text(percentageText)
                 .monospacedDigit()
+                .foregroundStyle(percentageColor ?? .primary)
             if let suffix = burnRateSuffix {
                 Text(suffix)
                     .font(.caption2)
