@@ -12,7 +12,6 @@ struct ParamClaudeBarApp: App {
         MenuBarExtra {
             PopoverView(
                 service: service,
-                historyService: historyService,
                 notificationService: notificationService,
                 appUpdater: appUpdater
             )

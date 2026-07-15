@@ -3,7 +3,6 @@ import Charts
 
 struct PopoverView: View {
     @ObservedObject var service: UsageService
-    @ObservedObject var historyService: UsageHistoryService
     @ObservedObject var notificationService: NotificationService
     @ObservedObject var appUpdater: AppUpdater
 
@@ -69,66 +68,26 @@ struct PopoverView: View {
 
     // MARK: - Authenticated body
 
-    private var projection5h: BurnRateProjection {
-        BurnRateCalculator.project(
-            points: historyService.history.dataPoints,
-            valueExtractor: { $0.pct5h * 100 },
-            currentPercent: service.pct5h * 100,
-            resetTime: service.usage?.fiveHour?.resetsAtDate
-        )
-    }
-
     @ViewBuilder
     private var authenticatedBody: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 16) {
             Text("Claude Usage")
                 .font(.headline)
                 .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity)
 
-            VStack(spacing: 16) {
-                WindowRow(
-                    label: "5-hour limit",
+            VStack(spacing: 12) {
+                CompactWindowRow(
+                    label: "5h",
                     bucket: service.usage?.fiveHour,
-                    tintForFraction: Theme.fiveHourTint(forFraction:)
+                    tint: Theme.fiveHourTint(forFraction:)
                 )
-                WindowRow(
-                    label: "7-day limit",
+                CompactWindowRow(
+                    label: "7d",
                     bucket: service.usage?.sevenDay,
-                    tintForFraction: Theme.sevenDayTint(forFraction:)
+                    tint: Theme.sevenDayTint(forFraction:)
                 )
-
-                if let opus = service.usage?.sevenDayOpus, opus.utilization != nil {
-                    InlineModelLine(opus: opus, sonnet: service.usage?.sevenDaySonnet)
-                        .padding(.top, 2)
-                }
-                if let extra = service.usage?.extraUsage, extra.isEnabled {
-                    InlineExtraUsageLine(extra: extra)
-                }
-                if service.usage?.fiveHour != nil {
-                    BurnRateSentence(projection: projection5h)
-                }
             }
-
-            UsageChartView(
-                historyService: historyService,
-                projection: projection5h
-            )
-            .padding(.top, 4)
-
-            HStack {
-                Spacer()
-                Link(destination: URL(string: "https://claude.ai")!) {
-                    HStack(spacing: 3) {
-                        Text("Open Claude")
-                        Image(systemName: "arrow.up.right")
-                            .font(.system(size: 8, weight: .semibold))
-                    }
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.top, -2)
 
             if let error = service.lastError {
                 let isSlowdown = error.lowercased().contains("slowing down")
@@ -277,73 +236,48 @@ private struct CodeEntryView: View {
     }
 }
 
-// MARK: - Window row (single card layout, fat capsule bar)
+// MARK: - Compact window row (label + inline %, slim outlined bar)
 
-private struct WindowRow: View {
+private struct CompactWindowRow: View {
     let label: String
     let bucket: UsageBucket?
-    let tintForFraction: (Double) -> Color
-
-    @State private var ticker = Date()
-    private let tickerTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+    let tint: (Double) -> Color
 
     private var fraction: Double {
         max(0, min(1, (bucket?.utilization ?? 0) / 100.0))
     }
-    private var pctInt: Int {
-        Int(round((bucket?.utilization ?? 0)))
-    }
     private var hasData: Bool { bucket?.utilization != nil }
+    private var pctInt: Int { Int(round(bucket?.utilization ?? 0)) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(label)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.primary)
-                Spacer()
-                if let resetDate = bucket?.resetsAtDate {
-                    Text(resetSummary(for: resetDate, now: ticker))
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
-            }
+        VStack(alignment: .leading, spacing: 5) {
+            Text(hasData ? "\(label): \(pctInt)%" : "\(label): —")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.primary)
+                .monospacedDigit()
+                .contentTransition(.numericText())
 
-            FatCapsuleBar(fraction: fraction, tint: tintForFraction(fraction))
-
-            HStack(spacing: 6) {
-                if fraction >= 0.85 {
-                    PulsingDot(color: tintForFraction(fraction))
-                }
-                Text(hasData ? "\(pctInt)% used" : "—")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-            }
-            .frame(maxWidth: .infinity, alignment: .center)
+            SlimBar(fraction: fraction, tint: tint(fraction))
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.easeInOut(duration: 0.25), value: fraction)
-        .onReceive(tickerTimer) { ticker = $0 }
     }
 }
 
-private struct FatCapsuleBar: View {
+private struct SlimBar: View {
     let fraction: Double
     let tint: Color
-    private let height: CGFloat = 8
+    private let height: CGFloat = 10
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color.primary.opacity(0.10))
-                Capsule()
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.20), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(tint)
-                    .frame(width: max(height, geo.size.width * fraction))
+                    .frame(width: max(fraction > 0 ? height * 0.6 : 0, geo.size.width * fraction))
+                    .padding(1)
             }
         }
         .frame(height: height)
@@ -527,180 +461,4 @@ private struct FooterLinkButtonStyle: ButtonStyle {
     }
 }
 
-private struct PulsingDot: View {
-    let color: Color
-    @State private var scale: CGFloat = 1.0
-
-    var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 6, height: 6)
-            .scaleEffect(scale)
-            .onAppear {
-                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                    scale = 1.5
-                }
-            }
-    }
-}
-
-// MARK: - Inline per-model line
-
-private struct InlineModelLine: View {
-    let opus: UsageBucket
-    let sonnet: UsageBucket?
-
-    var body: some View {
-        HStack(spacing: 14) {
-            modelChip(label: "Opus", bucket: opus)
-            if let sonnet {
-                modelChip(label: "Sonnet", bucket: sonnet)
-            }
-            Spacer()
-        }
-        .font(.system(size: 10))
-        .foregroundStyle(.secondary)
-        .monospacedDigit()
-    }
-
-    @ViewBuilder
-    private func modelChip(label: String, bucket: UsageBucket) -> some View {
-        if let pct = bucket.utilization {
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(Theme.sevenDayTint(forFraction: pct / 100))
-                    .frame(width: 5, height: 5)
-                Text(label)
-                Text("\(Int(round(pct)))%")
-                    .foregroundStyle(.primary)
-            }
-        }
-    }
-}
-
-private struct InlineExtraUsageLine: View {
-    let extra: ExtraUsage
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(Theme.extraUsageAccent)
-                .frame(width: 5, height: 5)
-            Text("Extra")
-            if let used = extra.usedCreditsAmount, let limit = extra.monthlyLimitAmount {
-                Text("\(ExtraUsage.formatUSD(used)) / \(ExtraUsage.formatUSD(limit))")
-                    .foregroundStyle(.primary)
-            }
-            if let pct = extra.utilization {
-                Text("·")
-                    .foregroundStyle(.tertiary)
-                Text("\(Int(round(pct)))%")
-            }
-            Spacer()
-        }
-        .font(.system(size: 10))
-        .foregroundStyle(.secondary)
-        .monospacedDigit()
-    }
-}
-
-// MARK: - Burn-rate sentence (replaces the three-card insights grid)
-
-private struct BurnRateSentence: View {
-    let projection: BurnRateProjection
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Text(verbatim: leading)
-                .foregroundStyle(.secondary)
-                .help(leadingHelp)
-            if let trailing {
-                Text("·")
-                    .foregroundStyle(.tertiary)
-                Text(verbatim: trailing)
-                    .foregroundStyle(.primary)
-            }
-            Spacer()
-        }
-        .font(.system(size: 10))
-        .monospacedDigit()
-    }
-
-    private var leadingHelp: String {
-        if projection.burnRatePerHour > 0 {
-            return "Linear projection from the last 30 minutes of usage."
-        } else if projection.burnRatePerHour < 0 {
-            return "Older minutes are rolling out of the 5-hour window faster than new usage is being added — the rolling total is shrinking."
-        } else {
-            return "No measurable change in the 5-hour window over the last 30 minutes."
-        }
-    }
-
-    private var leading: String {
-        if projection.burnRatePerHour > 0 {
-            return "Burning at \(formatRate(projection.burnRatePerHour))%/h"
-        } else if projection.burnRatePerHour < 0 {
-            return "Recovering"
-        } else {
-            return "Idle"
-        }
-    }
-
-    private var trailing: String? {
-        if let hit = projection.projectedHitTime {
-            let time = hit.formatted(.dateTime.hour().minute().locale(.init(identifier: "en_GB")))
-            return "hit \(time)"
-        } else if projection.burnRatePerHour > 0 {
-            return "on track"
-        }
-        return nil
-    }
-}
-
-/// Composes the clock-time reset string with a live countdown ("in 4h 23m").
-/// Countdown is omitted when the reset is more than 24 hours away (the
-/// weekday is already the most useful anchor) or once the reset has passed.
-private func resetSummary(for date: Date, now: Date) -> String {
-    let clock = resetWallClock(for: date, now: now, prefix: true)
-    let secs = date.timeIntervalSince(now)
-    guard secs > 0, secs <= 24 * 3600 else { return clock }
-    let totalMins = Int(secs / 60)
-    if totalMins < 1 { return "\(clock) · <1m" }
-    if totalMins < 60 { return "\(clock) · in \(totalMins)m" }
-    let hours = totalMins / 60
-    let mins = totalMins % 60
-    let countdown = mins == 0 ? "in \(hours)h" : "in \(hours)h \(mins)m"
-    return "\(clock) · \(countdown)"
-}
-
-private func resetWallClock(
-    for date: Date,
-    calendar: Calendar = .current,
-    now: Date = Date(),
-    prefix: Bool = true
-) -> String {
-    let locale = Locale(identifier: "en_GB")
-    var cal = calendar
-    cal.locale = locale
-
-    let resetDay = cal.startOfDay(for: date)
-    let today = cal.startOfDay(for: now)
-    let dayOffset = cal.dateComponents([.day], from: today, to: resetDay).day ?? 0
-
-    let timeFormat = Date.FormatStyle.dateTime.hour().minute().locale(locale)
-    let timeString = date.formatted(timeFormat)
-
-    let body: String
-    if dayOffset == 0 {
-        body = "at \(timeString)"
-    } else {
-        let weekday = date.formatted(.dateTime.weekday(.abbreviated).locale(locale))
-        body = "\(weekday) \(timeString)"
-    }
-    return prefix ? "Resets \(body)" : body
-}
-
-private func formatRate(_ value: Double) -> String {
-    String(format: "%.1f", value)
-}
 
