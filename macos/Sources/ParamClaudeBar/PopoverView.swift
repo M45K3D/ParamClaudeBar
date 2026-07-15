@@ -277,31 +277,62 @@ private struct CompactWindowRow: View {
             label: label,
             fraction: fraction,
             percentText: hasData ? "\(pctInt)%" : "—",
-            tint: tint(fraction)
+            tint: tint(fraction),
+            trailing: bucket?.resetsAtDate.map { resetClockLabel(for: $0) }
         )
     }
 }
 
 /// "Label: 42%" over a slim outlined bar — the popover's one bar primitive.
+/// An optional `trailing` string is right-aligned on the label line (used for
+/// window reset times).
 private struct CompactBarRow: View {
     let label: String
     let fraction: Double
     let percentText: String
     let tint: Color
+    var trailing: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("\(label): \(percentText)")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.primary)
-                .monospacedDigit()
-                .contentTransition(.numericText())
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("\(label): \(percentText)")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                if let trailing {
+                    Spacer(minLength: 4)
+                    Text(trailing)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
 
             SlimBar(fraction: fraction, tint: tint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.easeInOut(duration: 0.25), value: fraction)
     }
+}
+
+/// "resets 18:40" for today, "resets Sat 14:00" for another day.
+private func resetClockLabel(for date: Date, now: Date = Date()) -> String {
+    let locale = Locale(identifier: "en_GB")
+    var cal = Calendar.current
+    cal.locale = locale
+    let dayOffset = cal.dateComponents(
+        [.day],
+        from: cal.startOfDay(for: now),
+        to: cal.startOfDay(for: date)
+    ).day ?? 0
+    let time = date.formatted(.dateTime.hour().minute().locale(locale))
+    if dayOffset == 0 { return "resets \(time)" }
+    let weekday = date.formatted(.dateTime.weekday(.abbreviated).locale(locale))
+    return "resets \(weekday) \(time)"
 }
 
 private struct SlimBar: View {
