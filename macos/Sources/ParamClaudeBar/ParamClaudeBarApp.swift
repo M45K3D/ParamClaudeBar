@@ -7,13 +7,15 @@ struct ParamClaudeBarApp: App {
     @StateObject private var notificationService = NotificationService()
     @StateObject private var appUpdater = AppUpdater()
     @StateObject private var settings = SettingsStore()
+    @StateObject private var sessionMonitor = ClaudeCodeSessionMonitor()
 
     var body: some Scene {
         MenuBarExtra {
             PopoverView(
                 service: service,
                 notificationService: notificationService,
-                appUpdater: appUpdater
+                appUpdater: appUpdater,
+                sessionMonitor: sessionMonitor
             )
             .preferredColorScheme(settings.appearanceTheme.preferredColorScheme)
         } label: {

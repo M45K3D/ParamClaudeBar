@@ -5,6 +5,9 @@ struct PopoverView: View {
     @ObservedObject var service: UsageService
     @ObservedObject var notificationService: NotificationService
     @ObservedObject var appUpdater: AppUpdater
+    @ObservedObject var sessionMonitor: ClaudeCodeSessionMonitor
+
+    private let sessionRefreshTimer = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
 
     var body: some View {
         Group {
@@ -21,6 +24,8 @@ struct PopoverView: View {
         .frame(width: 320)
         .background(.regularMaterial)
         .animation(.easeInOut(duration: 0.2), value: service.isAuthenticated)
+        .onAppear { sessionMonitor.refresh() }
+        .onReceive(sessionRefreshTimer) { _ in sessionMonitor.refresh() }
     }
 
     @ViewBuilder
@@ -77,6 +82,24 @@ struct PopoverView: View {
                 .frame(maxWidth: .infinity)
 
             VStack(spacing: 12) {
+                if let session = sessionMonitor.session {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Model: \(session.modelLabel)")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        CompactBarRow(
+                            label: "Context",
+                            fraction: session.contextFraction,
+                            percentText: "\(session.contextPercent)%",
+                            tint: Theme.fiveHourTint(forFraction: session.contextFraction)
+                        )
+                    }
+                }
+
                 CompactWindowRow(
                     label: "5h",
                     bucket: service.usage?.fiveHour,
@@ -250,14 +273,31 @@ private struct CompactWindowRow: View {
     private var pctInt: Int { Int(round(bucket?.utilization ?? 0)) }
 
     var body: some View {
+        CompactBarRow(
+            label: label,
+            fraction: fraction,
+            percentText: hasData ? "\(pctInt)%" : "—",
+            tint: tint(fraction)
+        )
+    }
+}
+
+/// "Label: 42%" over a slim outlined bar — the popover's one bar primitive.
+private struct CompactBarRow: View {
+    let label: String
+    let fraction: Double
+    let percentText: String
+    let tint: Color
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(hasData ? "\(label): \(pctInt)%" : "\(label): —")
+            Text("\(label): \(percentText)")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.primary)
                 .monospacedDigit()
                 .contentTransition(.numericText())
 
-            SlimBar(fraction: fraction, tint: tint(fraction))
+            SlimBar(fraction: fraction, tint: tint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.easeInOut(duration: 0.25), value: fraction)
