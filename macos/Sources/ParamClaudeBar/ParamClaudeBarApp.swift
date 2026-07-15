@@ -22,7 +22,8 @@ struct ParamClaudeBarApp: App {
             MenuBarLabel(
                 service: service,
                 settings: settings,
-                historyService: historyService
+                historyService: historyService,
+                sessionMonitor: sessionMonitor
             )
             .task {
                 if service.isAuthenticated && !UserDefaults.standard.bool(forKey: "setupComplete") {
@@ -32,6 +33,7 @@ struct ParamClaudeBarApp: App {
                 service.historyService = historyService
                 service.notificationService = notificationService
                 service.startPolling()
+                sessionMonitor.startBackgroundRefresh()
 
                 if !UserDefaults.standard.bool(forKey: "setupComplete") {
                     OnboardingWindowController.show(
@@ -62,6 +64,7 @@ private struct MenuBarLabel: View {
     @ObservedObject var service: UsageService
     @ObservedObject var settings: SettingsStore
     @ObservedObject var historyService: UsageHistoryService
+    @ObservedObject var sessionMonitor: ClaudeCodeSessionMonitor
 
     private var icon: NSImage {
         service.isAuthenticated
@@ -69,15 +72,29 @@ private struct MenuBarLabel: View {
             : renderUnauthenticatedIcon(monochrome: settings.useMonochromeIcon)
     }
 
+    /// Fraction the menu-bar percentage represents, per the chosen metric.
+    /// Context falls back to the 5-hour fraction when no session is available.
+    private var metricFraction: Double? {
+        switch settings.menuBarMetric {
+        case .fiveHour:
+            return service.isAuthenticated ? service.pct5h : nil
+        case .context:
+            if let session = sessionMonitor.session { return session.contextFraction }
+            return service.isAuthenticated ? service.pct5h : nil
+        }
+    }
+
     private var percentageText: String {
-        guard service.isAuthenticated else { return "—" }
-        return "\(Int(round(service.pct5h * 100)))%"
+        guard let fraction = metricFraction else { return "—" }
+        return "\(Int(round(fraction * 100)))%"
     }
 
     /// "→2h12m" if the burn-rate hint setting is on and the 5h projection
     /// lands before the window resets. nil otherwise. SPEC §7.4.
     private var burnRateSuffix: String? {
-        guard settings.showBurnRateHint, service.isAuthenticated else { return nil }
+        guard settings.menuBarMetric == .fiveHour,
+              settings.showBurnRateHint,
+              service.isAuthenticated else { return nil }
         let projection = BurnRateCalculator.project(
             points: historyService.history.dataPoints,
             valueExtractor: { $0.pct5h * 100 },
@@ -99,8 +116,8 @@ private struct MenuBarLabel: View {
     private var percentageColor: Color? {
         guard settings.colorCodePercentage,
               !settings.useMonochromeIcon,
-              service.isAuthenticated else { return nil }
-        return Theme.fiveHourTint(forFraction: service.pct5h)
+              let fraction = metricFraction else { return nil }
+        return Theme.fiveHourTint(forFraction: fraction)
     }
 
     @ViewBuilder

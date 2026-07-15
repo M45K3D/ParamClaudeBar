@@ -23,6 +23,17 @@ struct ClaudeCodeSession: Equatable {
             : "\(contextWindow / 1000)K"
         return "\(modelDisplayName) (\(window) context)"
     }
+
+    /// Seconds since the transcript was last written.
+    func idleSeconds(now: Date = Date()) -> TimeInterval {
+        now.timeIntervalSince(lastActivity)
+    }
+
+    /// True when the session hasn't been written to recently, so its context
+    /// reading is stale rather than live.
+    func isIdle(now: Date = Date(), threshold: TimeInterval = 300) -> Bool {
+        idleSeconds(now: now) >= threshold
+    }
 }
 
 /// Watches the Claude Code transcript directory and publishes a snapshot of the
@@ -39,6 +50,7 @@ final class ClaudeCodeSessionMonitor: ObservableObject {
 
     private let projectsDir: URL
     private let tailBytes: Int
+    private var timer: Timer?
 
     init(
         projectsDir: URL = FileManager.default
@@ -62,22 +74,56 @@ final class ClaudeCodeSessionMonitor: ObservableObject {
         }
     }
 
+    /// Refresh now and keep refreshing on an interval so the menu-bar reading
+    /// stays current even while the popover is closed. Reading only the last
+    /// 512 KB of one file makes this cheap.
+    func startBackgroundRefresh(interval: TimeInterval = 30) {
+        refresh()
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refresh() }
+        }
+    }
+
     // MARK: - Pure(ish) computation
 
-    nonisolated static func computeSnapshot(projectsDir: URL, tailBytes: Int) -> ClaudeCodeSession? {
+    nonisolated static func computeSnapshot(
+        projectsDir: URL,
+        tailBytes: Int,
+        defaults: UserDefaults = .standard
+    ) -> ClaudeCodeSession? {
         guard let url = newestTranscript(in: projectsDir) else { return nil }
         let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
             .contentModificationDate ?? Date()
         let lines = readTail(url, maxBytes: tailBytes)
         guard let parsed = parseLatestAssistant(lines: lines) else { return nil }
 
-        let window = inferContextWindow(effectiveTokens: parsed.tokens)
+        // Infer the window from the *high-water mark* of this session, not the
+        // current fill, so a session that once crossed 200K stays on the 1M
+        // window even after a /compact drops it back down.
+        let sessionId = url.deletingPathExtension().lastPathComponent
+        let peak = persistedPeakTokens(sessionId: sessionId, current: parsed.tokens, defaults: defaults)
+        let window = inferContextWindow(effectiveTokens: peak)
         return ClaudeCodeSession(
             modelDisplayName: friendlyModelName(parsed.model),
             contextTokens: parsed.tokens,
             contextWindow: window,
             lastActivity: modified
         )
+    }
+
+    /// Track and return the highest effective-token count ever seen for a
+    /// session id, persisted across launches.
+    nonisolated static func persistedPeakTokens(
+        sessionId: String,
+        current: Int,
+        defaults: UserDefaults
+    ) -> Int {
+        let key = "ccSessionPeak.\(sessionId)"
+        let stored = defaults.integer(forKey: key)
+        let peak = max(stored, current)
+        if peak != stored { defaults.set(peak, forKey: key) }
+        return peak
     }
 
     /// Newest `*.jsonl` by modification date across every project directory.

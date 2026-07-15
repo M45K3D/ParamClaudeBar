@@ -18,6 +18,21 @@ enum MenuBarDisplayMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// Which percentage the menu-bar text tracks.
+enum MenuBarMetric: String, CaseIterable, Identifiable {
+    case fiveHour
+    case context
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .fiveHour: return "5-hour"
+        case .context: return "Context"
+        }
+    }
+}
+
 /// User-selectable interface theme, per SPEC §9.2.
 enum AppearanceTheme: String, CaseIterable, Identifiable {
     case system
@@ -73,6 +88,10 @@ final class SettingsStore: ObservableObject {
         didSet { defaults.set(colorCodePercentage, forKey: Keys.colorCodePercentage) }
     }
 
+    @Published var menuBarMetric: MenuBarMetric {
+        didSet { defaults.set(menuBarMetric.rawValue, forKey: Keys.menuBarMetric) }
+    }
+
     @Published var notifyWarningEnabled: Bool {
         didSet { defaults.set(notifyWarningEnabled, forKey: Keys.notifyWarningEnabled) }
     }
@@ -104,6 +123,10 @@ final class SettingsStore: ObservableObject {
         self.useMonochromeIcon = defaults.bool(forKey: Keys.useMonochromeIcon)
         self.colorCodePercentage = (defaults.object(forKey: Keys.colorCodePercentage) as? Bool) ?? true
 
+        let storedMetric = defaults.string(forKey: Keys.menuBarMetric)
+            .flatMap(MenuBarMetric.init(rawValue:))
+        self.menuBarMetric = storedMetric ?? .fiveHour
+
         self.notifyWarningEnabled = (defaults.object(forKey: Keys.notifyWarningEnabled) as? Bool) ?? true
         self.notifyCriticalEnabled = (defaults.object(forKey: Keys.notifyCriticalEnabled) as? Bool) ?? true
         self.notifyBurnRateEnabled = (defaults.object(forKey: Keys.notifyBurnRateEnabled) as? Bool) ?? true
@@ -116,6 +139,7 @@ final class SettingsStore: ObservableObject {
         static let showBurnRateHint = "showBurnRateHint"
         static let useMonochromeIcon = "useMonochromeIcon"
         static let colorCodePercentage = "colorCodePercentage"
+        static let menuBarMetric = "menuBarMetric"
         static let notifyWarningEnabled = "notifyWarningEnabled"
         static let notifyCriticalEnabled = "notifyCriticalEnabled"
         static let notifyBurnRateEnabled = "notifyBurnRateEnabled"

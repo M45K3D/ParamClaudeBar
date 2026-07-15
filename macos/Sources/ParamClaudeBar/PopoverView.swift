@@ -83,6 +83,7 @@ struct PopoverView: View {
 
             VStack(spacing: 12) {
                 if let session = sessionMonitor.session {
+                    let idle = session.isIdle()
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Model: \(session.modelLabel)")
                             .font(.system(size: 12))
@@ -95,9 +96,11 @@ struct PopoverView: View {
                             label: "Context",
                             fraction: session.contextFraction,
                             percentText: "\(session.contextPercent)%",
-                            tint: Theme.fiveHourTint(forFraction: session.contextFraction)
+                            tint: Theme.fiveHourTint(forFraction: session.contextFraction),
+                            trailing: idle ? "idle \(idleLabel(session.idleSeconds()))" : nil
                         )
                     }
+                    .opacity(idle ? 0.55 : 1)
                 }
 
                 CompactWindowRow(
@@ -317,6 +320,15 @@ private struct CompactBarRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.easeInOut(duration: 0.25), value: fraction)
     }
+}
+
+/// Compact "20m" / "3h" / "2d" idle duration from a seconds interval.
+private func idleLabel(_ seconds: TimeInterval) -> String {
+    let mins = Int(seconds / 60)
+    if mins < 60 { return "\(max(1, mins))m" }
+    let hours = mins / 60
+    if hours < 24 { return "\(hours)h" }
+    return "\(hours / 24)d"
 }
 
 /// "resets 18:40" for today, "resets Sat 14:00" for another day.

@@ -70,6 +70,13 @@ private struct GeneralSettingsTab: View {
                 }
                 .pickerStyle(.segmented)
 
+                Picker("Percentage", selection: $settings.menuBarMetric) {
+                    ForEach(MenuBarMetric.allCases) { metric in
+                        Text(metric.label).tag(metric)
+                    }
+                }
+                .pickerStyle(.segmented)
+
                 Toggle("Show burn-rate hint", isOn: $settings.showBurnRateHint)
 
                 Toggle("Colour-code percentage", isOn: $settings.colorCodePercentage)

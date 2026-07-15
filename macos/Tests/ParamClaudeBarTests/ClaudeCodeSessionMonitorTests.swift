@@ -66,6 +66,30 @@ final class ClaudeCodeSessionMonitorTests: XCTestCase {
         XCTAssertEqual(small.contextPercent, 50)
     }
 
+    func testPersistedPeakTokensTracksHighWaterMark() {
+        let defaults = UserDefaults(suiteName: "peak-test-\(UUID().uuidString)")!
+        let id = "sess-1"
+        XCTAssertEqual(ClaudeCodeSessionMonitor.persistedPeakTokens(sessionId: id, current: 150_000, defaults: defaults), 150_000)
+        // Grows with a higher reading.
+        XCTAssertEqual(ClaudeCodeSessionMonitor.persistedPeakTokens(sessionId: id, current: 300_000, defaults: defaults), 300_000)
+        // A lower reading (e.g. after /compact) keeps the peak.
+        XCTAssertEqual(ClaudeCodeSessionMonitor.persistedPeakTokens(sessionId: id, current: 40_000, defaults: defaults), 300_000)
+    }
+
+    func testIsIdle() {
+        let now = Date(timeIntervalSince1970: 10_000)
+        let fresh = ClaudeCodeSession(
+            modelDisplayName: "Opus 4.8", contextTokens: 1, contextWindow: 200_000,
+            lastActivity: now.addingTimeInterval(-60)
+        )
+        let stale = ClaudeCodeSession(
+            modelDisplayName: "Opus 4.8", contextTokens: 1, contextWindow: 200_000,
+            lastActivity: now.addingTimeInterval(-600)
+        )
+        XCTAssertFalse(fresh.isIdle(now: now))
+        XCTAssertTrue(stale.isIdle(now: now))
+    }
+
     func testReadTailDropsPartialFirstLine() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
