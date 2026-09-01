@@ -17,7 +17,6 @@ struct ParamClaudeBarApp: App {
                 appUpdater: appUpdater,
                 sessionMonitor: sessionMonitor
             )
-            .preferredColorScheme(settings.appearanceTheme.preferredColorScheme)
         } label: {
             MenuBarLabel(
                 service: service,
@@ -118,7 +117,7 @@ private struct MenuBarLabel: View {
         guard settings.colorCodePercentage,
               !settings.useMonochromeIcon,
               let fraction = metricFraction else { return nil }
-        return Theme.fiveHourTint(forFraction: fraction)
+        return Theme.usageTint(forFraction: fraction)
     }
 
     @ViewBuilder

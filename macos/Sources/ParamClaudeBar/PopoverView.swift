@@ -25,7 +25,10 @@ struct PopoverView: View {
             }
         }
         .frame(width: 320)
-        .background(.regularMaterial)
+        .background(Theme.popoverSurface)
+        // The card is a fixed near-black, so force the dark scheme to keep the
+        // semantic text colours legible even when macOS is in light mode.
+        .environment(\.colorScheme, .dark)
         .animation(.easeInOut(duration: 0.2), value: service.isAuthenticated)
         .onAppear {
             sessionMonitor.refresh()
@@ -37,19 +40,9 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var authenticatedCard: some View {
-        VStack(spacing: 0) {
-            authenticatedBody
-        }
-        .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.5))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-        )
-        .padding(10)
+        authenticatedBody
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
     }
 
     // MARK: - Sign-in (post-onboarding sign-out fallback)
@@ -82,28 +75,26 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var authenticatedBody: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 7) {
                 ClaudeLogoShape()
                     .fill(Color.primary)
-                    .frame(width: 15, height: 15)
+                    .frame(width: 16, height: 16)
                 Text("Claude Usage")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
                 Spacer()
             }
 
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 UsageSection(
                     title: "Current session",
                     bucket: service.usage?.fiveHour,
-                    tint: Theme.fiveHourTint(forFraction:),
                     now: ticker
                 )
                 UsageSection(
                     title: "All models",
                     bucket: service.usage?.sevenDay,
-                    tint: Theme.sevenDayTint(forFraction:),
                     now: ticker
                 )
 
@@ -117,7 +108,7 @@ struct PopoverView: View {
                         trailing: idle
                             ? "Idle \(idleLabel(session.idleSeconds(now: ticker)))"
                             : nil,
-                        tint: Theme.fiveHourTint(forFraction: session.contextFraction)
+                        tint: Theme.usageTint(forFraction: session.contextFraction)
                     )
                     .opacity(idle ? 0.55 : 1)
                 }
@@ -281,12 +272,7 @@ private struct UsageSection: View {
     let tint: Color
 
     /// Convenience initialiser for an account window bucket.
-    init(
-        title: String,
-        bucket: UsageBucket?,
-        tint: (Double) -> Color,
-        now: Date
-    ) {
+    init(title: String, bucket: UsageBucket?, now: Date) {
         let pct = bucket?.utilization
         let fraction = max(0, min(1, (pct ?? 0) / 100.0))
         self.title = title
@@ -294,7 +280,7 @@ private struct UsageSection: View {
         self.fraction = fraction
         self.percentText = pct.map { "\(Int(round($0)))% Used" } ?? "—"
         self.trailing = bucket?.resetsAtDate.map { resetLabel(for: $0, now: now) }
-        self.tint = tint(fraction)
+        self.tint = Theme.usageTint(forFraction: fraction)
     }
 
     /// Full control, used by the Claude Code context section.
@@ -399,13 +385,13 @@ func resetLabel(for date: Date, now: Date = Date()) -> String {
 private struct SlimBar: View {
     let fraction: Double
     let tint: Color
-    private let height: CGFloat = 5
+    private let height: CGFloat = 8
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.primary.opacity(0.13))
+                    .fill(Color.white.opacity(0.11))
                 Capsule()
                     .fill(tint)
                     .frame(width: max(fraction > 0 ? height : 0, geo.size.width * fraction))

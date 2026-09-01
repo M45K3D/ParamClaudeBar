@@ -102,6 +102,10 @@ private struct AppearanceSettingsTab: View {
                 }
                 .pickerStyle(.segmented)
 
+                Text("Applies to Settings and onboarding. The usage popover is always dark.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 Toggle("Use monochrome icon", isOn: $settings.useMonochromeIcon)
             }
         }
