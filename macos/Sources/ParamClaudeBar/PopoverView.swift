@@ -4,11 +4,8 @@ struct PopoverView: View {
     @ObservedObject var service: UsageService
     @ObservedObject var notificationService: NotificationService
     @ObservedObject var appUpdater: AppUpdater
-    @ObservedObject var sessionMonitor: ClaudeCodeSessionMonitor
 
-    private let sessionRefreshTimer = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
-
-    /// Drives the live "Resets in …" countdowns and the idle label.
+    /// Drives the live "Resets in …" countdowns.
     @State private var ticker = Date()
     private let countdownTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
@@ -30,11 +27,7 @@ struct PopoverView: View {
         // semantic text colours legible even when macOS is in light mode.
         .environment(\.colorScheme, .dark)
         .animation(.easeInOut(duration: 0.2), value: service.isAuthenticated)
-        .onAppear {
-            sessionMonitor.refresh()
-            ticker = Date()
-        }
-        .onReceive(sessionRefreshTimer) { _ in sessionMonitor.refresh() }
+        .onAppear { ticker = Date() }
         .onReceive(countdownTimer) { ticker = $0 }
     }
 
@@ -97,21 +90,6 @@ struct PopoverView: View {
                     bucket: service.usage?.sevenDay,
                     now: ticker
                 )
-
-                if let session = sessionMonitor.session {
-                    let idle = session.isIdle(now: ticker)
-                    UsageSection(
-                        title: "Context",
-                        subtitle: session.modelLabel,
-                        fraction: session.contextFraction,
-                        percentText: "\(session.contextPercent)% Used",
-                        trailing: idle
-                            ? "Idle \(idleLabel(session.idleSeconds(now: ticker)))"
-                            : nil,
-                        tint: Theme.usageTint(forFraction: session.contextFraction)
-                    )
-                    .opacity(idle ? 0.55 : 1)
-                }
             }
 
             if let error = service.lastError {
@@ -265,56 +243,26 @@ private struct CodeEntryView: View {
 
 private struct UsageSection: View {
     let title: String
-    var subtitle: String? = nil
     let fraction: Double
     let percentText: String
-    var trailing: String? = nil
+    let trailing: String?
     let tint: Color
 
-    /// Convenience initialiser for an account window bucket.
     init(title: String, bucket: UsageBucket?, now: Date) {
         let pct = bucket?.utilization
         let fraction = max(0, min(1, (pct ?? 0) / 100.0))
         self.title = title
-        self.subtitle = nil
         self.fraction = fraction
         self.percentText = pct.map { "\(Int(round($0)))% Used" } ?? "—"
         self.trailing = bucket?.resetsAtDate.map { resetLabel(for: $0, now: now) }
         self.tint = Theme.usageTint(forFraction: fraction)
     }
 
-    /// Full control, used by the Claude Code context section.
-    init(
-        title: String,
-        subtitle: String? = nil,
-        fraction: Double,
-        percentText: String,
-        trailing: String? = nil,
-        tint: Color
-    ) {
-        self.title = title
-        self.subtitle = subtitle
-        self.fraction = fraction
-        self.percentText = percentText
-        self.trailing = trailing
-        self.tint = tint
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(title)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                if let subtitle {
-                    Spacer(minLength: 4)
-                    Text(subtitle)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
-            }
+            Text(title)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
 
             SlimBar(fraction: fraction, tint: tint)
 
@@ -338,15 +286,6 @@ private struct UsageSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.easeInOut(duration: 0.25), value: fraction)
     }
-}
-
-/// Compact "20m" / "3h" / "2d" idle duration from a seconds interval.
-private func idleLabel(_ seconds: TimeInterval) -> String {
-    let mins = Int(seconds / 60)
-    if mins < 60 { return "\(max(1, mins))m" }
-    let hours = mins / 60
-    if hours < 24 { return "\(hours)h" }
-    return "\(hours / 24)d"
 }
 
 /// A countdown while the reset is near ("Resets in 51 min"), switching to an
