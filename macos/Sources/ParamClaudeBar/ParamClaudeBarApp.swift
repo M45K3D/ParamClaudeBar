@@ -67,9 +67,10 @@ private struct MenuBarLabel: View {
     @ObservedObject var sessionMonitor: ClaudeCodeSessionMonitor
 
     private var icon: NSImage {
-        service.isAuthenticated
-            ? renderIcon(pct5h: service.pct5h, pct7d: service.pct7d, monochrome: settings.useMonochromeIcon)
-            : renderUnauthenticatedIcon(monochrome: settings.useMonochromeIcon)
+        guard let fraction = metricFraction else {
+            return renderUnauthenticatedIcon(monochrome: settings.useMonochromeIcon)
+        }
+        return renderIcon(fraction: fraction, monochrome: settings.useMonochromeIcon)
     }
 
     /// Fraction the menu-bar percentage represents, per the chosen metric.

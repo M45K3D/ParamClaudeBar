@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 
 struct PopoverView: View {
     @ObservedObject var service: UsageService
@@ -8,6 +7,10 @@ struct PopoverView: View {
     @ObservedObject var sessionMonitor: ClaudeCodeSessionMonitor
 
     private let sessionRefreshTimer = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
+
+    /// Drives the live "Resets in …" countdowns and the idle label.
+    @State private var ticker = Date()
+    private let countdownTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     var body: some View {
         Group {
@@ -24,8 +27,12 @@ struct PopoverView: View {
         .frame(width: 320)
         .background(.regularMaterial)
         .animation(.easeInOut(duration: 0.2), value: service.isAuthenticated)
-        .onAppear { sessionMonitor.refresh() }
+        .onAppear {
+            sessionMonitor.refresh()
+            ticker = Date()
+        }
         .onReceive(sessionRefreshTimer) { _ in sessionMonitor.refresh() }
+        .onReceive(countdownTimer) { ticker = $0 }
     }
 
     @ViewBuilder
@@ -75,44 +82,45 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var authenticatedBody: some View {
-        VStack(spacing: 16) {
-            Text("Claude Usage")
-                .font(.headline)
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 7) {
+                ClaudeLogoShape()
+                    .fill(Color.primary)
+                    .frame(width: 15, height: 15)
+                Text("Claude Usage")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+            }
 
-            VStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
+                UsageSection(
+                    title: "Current session",
+                    bucket: service.usage?.fiveHour,
+                    tint: Theme.fiveHourTint(forFraction:),
+                    now: ticker
+                )
+                UsageSection(
+                    title: "All models",
+                    bucket: service.usage?.sevenDay,
+                    tint: Theme.sevenDayTint(forFraction:),
+                    now: ticker
+                )
+
                 if let session = sessionMonitor.session {
-                    let idle = session.isIdle()
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Model: \(session.modelLabel)")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        CompactBarRow(
-                            label: "Context",
-                            fraction: session.contextFraction,
-                            percentText: "\(session.contextPercent)%",
-                            tint: Theme.fiveHourTint(forFraction: session.contextFraction),
-                            trailing: idle ? "idle \(idleLabel(session.idleSeconds()))" : nil
-                        )
-                    }
+                    let idle = session.isIdle(now: ticker)
+                    UsageSection(
+                        title: "Context",
+                        subtitle: session.modelLabel,
+                        fraction: session.contextFraction,
+                        percentText: "\(session.contextPercent)% Used",
+                        trailing: idle
+                            ? "Idle \(idleLabel(session.idleSeconds(now: ticker)))"
+                            : nil,
+                        tint: Theme.fiveHourTint(forFraction: session.contextFraction)
+                    )
                     .opacity(idle ? 0.55 : 1)
                 }
-
-                CompactWindowRow(
-                    label: "5h",
-                    bucket: service.usage?.fiveHour,
-                    tint: Theme.fiveHourTint(forFraction:)
-                )
-                CompactWindowRow(
-                    label: "7d",
-                    bucket: service.usage?.sevenDay,
-                    tint: Theme.sevenDayTint(forFraction:)
-                )
             }
 
             if let error = service.lastError {
@@ -262,45 +270,71 @@ private struct CodeEntryView: View {
     }
 }
 
-// MARK: - Compact window row (label + inline %, slim outlined bar)
+// MARK: - Usage section (title over bar over "N% Used · Resets in …")
 
-private struct CompactWindowRow: View {
-    let label: String
-    let bucket: UsageBucket?
-    let tint: (Double) -> Color
-
-    private var fraction: Double {
-        max(0, min(1, (bucket?.utilization ?? 0) / 100.0))
-    }
-    private var hasData: Bool { bucket?.utilization != nil }
-    private var pctInt: Int { Int(round(bucket?.utilization ?? 0)) }
-
-    var body: some View {
-        CompactBarRow(
-            label: label,
-            fraction: fraction,
-            percentText: hasData ? "\(pctInt)%" : "—",
-            tint: tint(fraction),
-            trailing: bucket?.resetsAtDate.map { resetClockLabel(for: $0) }
-        )
-    }
-}
-
-/// "Label: 42%" over a slim outlined bar — the popover's one bar primitive.
-/// An optional `trailing` string is right-aligned on the label line (used for
-/// window reset times).
-private struct CompactBarRow: View {
-    let label: String
+private struct UsageSection: View {
+    let title: String
+    var subtitle: String? = nil
     let fraction: Double
     let percentText: String
-    let tint: Color
     var trailing: String? = nil
+    let tint: Color
+
+    /// Convenience initialiser for an account window bucket.
+    init(
+        title: String,
+        bucket: UsageBucket?,
+        tint: (Double) -> Color,
+        now: Date
+    ) {
+        let pct = bucket?.utilization
+        let fraction = max(0, min(1, (pct ?? 0) / 100.0))
+        self.title = title
+        self.subtitle = nil
+        self.fraction = fraction
+        self.percentText = pct.map { "\(Int(round($0)))% Used" } ?? "—"
+        self.trailing = bucket?.resetsAtDate.map { resetLabel(for: $0, now: now) }
+        self.tint = tint(fraction)
+    }
+
+    /// Full control, used by the Claude Code context section.
+    init(
+        title: String,
+        subtitle: String? = nil,
+        fraction: Double,
+        percentText: String,
+        trailing: String? = nil,
+        tint: Color
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.fraction = fraction
+        self.percentText = percentText
+        self.trailing = trailing
+        self.tint = tint
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("\(label): \(percentText)")
-                    .font(.system(size: 13, weight: .medium))
+                Text(title)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                if let subtitle {
+                    Spacer(minLength: 4)
+                    Text(subtitle)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+            }
+
+            SlimBar(fraction: fraction, tint: tint)
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(percentText)
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.primary)
                     .monospacedDigit()
                     .contentTransition(.numericText())
@@ -314,8 +348,6 @@ private struct CompactBarRow: View {
                         .minimumScaleFactor(0.8)
                 }
             }
-
-            SlimBar(fraction: fraction, tint: tint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.easeInOut(duration: 0.25), value: fraction)
@@ -331,36 +363,52 @@ private func idleLabel(_ seconds: TimeInterval) -> String {
     return "\(hours / 24)d"
 }
 
-/// "resets 18:40" for today, "resets Sat 14:00" for another day.
-private func resetClockLabel(for date: Date, now: Date = Date()) -> String {
+/// A countdown while the reset is near ("Resets in 51 min"), switching to an
+/// absolute day + time once it is far enough out that a countdown stops being
+/// useful ("Resets Thu 00:00"). Times stay en_GB to match the rest of the app.
+func resetLabel(for date: Date, now: Date = Date()) -> String {
+    let seconds = date.timeIntervalSince(now)
+    guard seconds > 0 else { return "Resetting…" }
+
+    let minutes = Int(seconds / 60)
+    if minutes < 1 { return "Resets in <1 min" }
+    if minutes < 60 { return "Resets in \(minutes) min" }
+
+    let hours = minutes / 60
+    if hours < 12 {
+        let remainder = minutes % 60
+        return remainder == 0
+            ? "Resets in \(hours) hr"
+            : "Resets in \(hours) hr \(remainder) min"
+    }
+
     let locale = Locale(identifier: "en_GB")
-    var cal = Calendar.current
-    cal.locale = locale
-    let dayOffset = cal.dateComponents(
-        [.day],
-        from: cal.startOfDay(for: now),
-        to: cal.startOfDay(for: date)
-    ).day ?? 0
+    var calendar = Calendar.current
+    calendar.locale = locale
     let time = date.formatted(.dateTime.hour().minute().locale(locale))
-    if dayOffset == 0 { return "resets \(time)" }
+    let dayOffset = calendar.dateComponents(
+        [.day],
+        from: calendar.startOfDay(for: now),
+        to: calendar.startOfDay(for: date)
+    ).day ?? 0
+    if dayOffset == 0 { return "Resets \(time)" }
     let weekday = date.formatted(.dateTime.weekday(.abbreviated).locale(locale))
-    return "resets \(weekday) \(time)"
+    return "Resets \(weekday) \(time)"
 }
 
 private struct SlimBar: View {
     let fraction: Double
     let tint: Color
-    private let height: CGFloat = 10
+    private let height: CGFloat = 5
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.20), lineWidth: 1)
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                Capsule()
+                    .fill(Color.primary.opacity(0.13))
+                Capsule()
                     .fill(tint)
-                    .frame(width: max(fraction > 0 ? height * 0.6 : 0, geo.size.width * fraction))
-                    .padding(1)
+                    .frame(width: max(fraction > 0 ? height : 0, geo.size.width * fraction))
             }
         }
         .frame(height: height)
